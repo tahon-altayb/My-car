@@ -60,6 +60,38 @@
                 android:textColor="?attr/lText"
                 android:textSize="18sp" />
 
+            <Button
+                android:id="@+id/brightDown"
+                android:layout_width="52dp"
+                android:layout_height="48dp"
+                android:layout_marginLeft="18dp"
+                android:background="@drawable/bg_tile"
+                android:contentDescription="خفض السطوع"
+                android:stateListAnimator="@null"
+                android:text="−"
+                android:textColor="?attr/lText"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/brightText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:layout_marginRight="8dp"
+                android:textColor="?attr/lTextDim"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/brightUp"
+                android:layout_width="52dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_tile"
+                android:contentDescription="رفع السطوع"
+                android:stateListAnimator="@null"
+                android:text="+"
+                android:textColor="?attr/lText"
+                android:textSize="22sp" />
+
             <TextView
                 android:id="@+id/dateText"
                 android:layout_width="0dp"
@@ -85,10 +117,12 @@
 
                 <TextView
                     android:id="@+id/clockText"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:singleLine="true"
                     android:textColor="?attr/lText"
-                    android:textSize="58sp"
+                    android:textSize="56sp"
                     android:textStyle="bold" />
 
                 <LinearLayout
@@ -97,9 +131,9 @@
                     android:layout_marginTop="10dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_card"
-                    android:gravity="center_vertical"
+                    android:gravity="center"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:padding="12dp">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -112,7 +146,7 @@
                         android:id="@+id/speedText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="٠"
+                        android:text="0"
                         android:textColor="?attr/lAccent"
                         android:textSize="80sp"
                         android:textStyle="bold" />
@@ -288,6 +322,19 @@
                             android:gravity="center"
                             android:orientation="horizontal">
 
+                            <Button
+                                android:id="@+id/musicBack10"
+                                android:layout_width="46dp"
+                                android:layout_height="46dp"
+                                android:layout_marginRight="10dp"
+                                android:background="@drawable/bg_round_alt"
+                                android:contentDescription="رجوع 10 ثواني"
+                                android:padding="0dp"
+                                android:stateListAnimator="@null"
+                                android:text="-10"
+                                android:textColor="?attr/lText"
+                                android:textSize="13sp" />
+
                             <ImageButton
                                 android:id="@+id/musicPrev"
                                 android:layout_width="52dp"
@@ -301,8 +348,8 @@
                                 android:id="@+id/musicPlay"
                                 android:layout_width="60dp"
                                 android:layout_height="60dp"
-                                android:layout_marginLeft="18dp"
-                                android:layout_marginRight="18dp"
+                                android:layout_marginLeft="10dp"
+                                android:layout_marginRight="10dp"
                                 android:background="@drawable/bg_round_accent"
                                 android:contentDescription="تشغيل أو إيقاف"
                                 android:src="@drawable/ic_play"
@@ -316,6 +363,19 @@
                                 android:contentDescription="التالي"
                                 android:src="@drawable/ic_next"
                                 android:tint="?attr/lText" />
+
+                            <Button
+                                android:id="@+id/musicFwd10"
+                                android:layout_width="46dp"
+                                android:layout_height="46dp"
+                                android:layout_marginLeft="10dp"
+                                android:background="@drawable/bg_round_alt"
+                                android:contentDescription="تقديم 10 ثواني"
+                                android:padding="0dp"
+                                android:stateListAnimator="@null"
+                                android:text="+10"
+                                android:textColor="?attr/lText"
+                                android:textSize="13sp" />
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
@@ -343,21 +403,36 @@
                         android:layout_marginLeft="12dp"
                         android:layout_weight="1" />
 
-                    <include
-                        android:id="@+id/slot2"
-                        layout="@layout/tile_app"
+                    <!-- مربع الصور -->
+                    <FrameLayout
+                        android:id="@+id/photoTile"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginLeft="12dp"
-                        android:layout_weight="1" />
+                        android:layout_weight="2"
+                        android:background="@drawable/bg_tile"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:padding="4dp">
 
-                    <include
-                        android:id="@+id/slot3"
-                        layout="@layout/tile_app"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginLeft="12dp"
-                        android:layout_weight="1" />
+                        <ImageView
+                            android:id="@+id/photoImage"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:contentDescription="@null"
+                            android:scaleType="centerCrop" />
+
+                        <TextView
+                            android:id="@+id/photoHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:gravity="center"
+                            android:padding="8dp"
+                            android:text="مربع الصور\nحط صورك في مجلد LauncherPhotos على الفلاشة"
+                            android:textColor="?attr/lTextDim"
+                            android:textSize="15sp" />
+                    </FrameLayout>
                 </LinearLayout>
             </LinearLayout>
 

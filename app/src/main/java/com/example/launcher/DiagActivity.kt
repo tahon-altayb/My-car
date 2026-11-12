@@ -32,10 +32,6 @@ class DiagActivity : Activity() {
     private var report = ""
     private lateinit var btTest: BtRemote
 
-    override fun onDestroy() {
-        btTest.stop()
-        super.onDestroy()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,8 +75,7 @@ class DiagActivity : Activity() {
         bar.addView(adbButton)
 
         // أزرار تجربة التحكم بموسيقى البلوتوث بطريقتين
-        btTest = BtRemote(this)
-        btTest.start()
+        btTest = BtRemote.get(this)
         val volRow = LinearLayout(this)
         volRow.orientation = LinearLayout.HORIZONTAL
         val labels = arrayOf("تشغيل/إيقاف", "التالي", "السابق")
@@ -214,6 +209,17 @@ class DiagActivity : Activity() {
 
     private fun listMethods(sb: StringBuilder, cls: Class<*>, filter: Regex?) {
         sb.append("CLASS ").append(cls.name).append(" extends ").append(cls.superclass?.name).append('\n')
+        try {
+            for (c in cls.declaredConstructors) {
+                sb.append("   NEW(").append(c.parameterTypes.joinToString(",") { it.simpleName }).append(")\n")
+            }
+            for (f in cls.declaredFields) {
+                if (!java.lang.reflect.Modifier.isStatic(f.modifiers)) {
+                    sb.append("   VAR ").append(f.name).append(": ").append(f.type.name).append('\n')
+                }
+            }
+        } catch (_: Throwable) {
+        }
         val methods = try { cls.declaredMethods } catch (e: Throwable) { emptyArray() }
         for (m in methods.sortedBy { it.name }) {
             if (filter != null && !filter.containsMatchIn(m.name)) continue
@@ -261,7 +267,11 @@ class DiagActivity : Activity() {
                 for (name in listOf(
                     "com.autochips.bluetooth.AvrcpControllerProfile",
                     "com.autochips.bluetooth.AvrcpControllerProfile\$MetadataCallback",
-                    "com.autochips.bluetooth.BtUtils"
+                    "com.autochips.bluetooth.AvrcpCtPlayerUtility",
+                    "com.autochips.bluetooth.IBluetoothAvrcpCt",
+                    "com.autochips.bluetooth.IBluetoothAvrcpCt\$Stub",
+                    "android.bluetooth.IBluetoothAvrcpCt",
+                    "com.autochips.bluetooth.LocalBluetoothProfileManager"
                 )) {
                     try {
                         listMethods(sb, ctx.classLoader.loadClass(name), null)

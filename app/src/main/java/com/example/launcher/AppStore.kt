@@ -42,6 +42,13 @@ class AppStore(context: Context) {
         prefs.edit().putString("theme_mode", mode).apply()
     }
 
+    /** سطوع اللانشر من 1 إلى 10. */
+    fun brightness(): Int = prefs.getInt("brightness", 10)
+
+    fun setBrightness(level: Int) {
+        prefs.edit().putInt("brightness", level).apply()
+    }
+
     fun lat(): Double = prefs.getFloat("lat", DEFAULT_LAT).toDouble()
     fun lng(): Double = prefs.getFloat("lng", DEFAULT_LNG).toDouble()
 

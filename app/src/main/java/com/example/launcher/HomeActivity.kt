@@ -62,6 +62,7 @@ class HomeActivity : Activity() {
     private lateinit var music: MusicTile
     private lateinit var audio: AudioManager
     private lateinit var carVolume: CarVolume
+    private lateinit var photos: PhotoTile
 
     private lateinit var root: View
     private lateinit var dateText: TextView
@@ -101,9 +102,7 @@ class HomeActivity : Activity() {
 
     private val tiles = listOf(
         R.id.mapsTile to AppStore.MAPS,
-        R.id.slot1 to AppStore.SLOT_1,
-        R.id.slot2 to AppStore.SLOT_2,
-        R.id.slot3 to AppStore.SLOT_3
+        R.id.slot1 to AppStore.SLOT_1
     )
 
     private val tick = object : Runnable {
@@ -129,7 +128,7 @@ class HomeActivity : Activity() {
         override fun onLocationChanged(location: Location) {
             if (location.hasSpeed()) {
                 val kmh = Math.round(location.speed * 3.6f)
-                speedText.text = String.format(arabic, "%d", kmh)
+                speedText.text = String.format(Locale.US, "%d", kmh)
             }
             syncClock(location.time)
             val moved = Math.abs(location.latitude - store.lat()) > 0.05 ||
@@ -181,7 +180,11 @@ class HomeActivity : Activity() {
 
         music = MusicTile(this, handler)
 
+        photos = PhotoTile(handler, findViewById(R.id.photoImage), findViewById(R.id.photoHint))
+        findViewById<View>(R.id.photoTile).setOnClickListener { photos.next() }
+
         setupThemeToggle()
+        setupBrightness()
         setupWallpaper()
         setupPrayerRow()
         setupVolume()
@@ -209,6 +212,7 @@ class HomeActivity : Activity() {
             AppStore.MODE_DAY -> true
             AppStore.MODE_NIGHT -> false
             else -> {
+                if (!TimeSource.valid()) return appliedDay
                 val times = prayerTimes()
                 val now = nowHours()
                 now >= times[1] && now < times[4]   // من الشروق إلى المغرب
@@ -231,6 +235,33 @@ class HomeActivity : Activity() {
             }
             store.setThemeMode(next)
             recreate()
+        }
+    }
+
+    // ---------- السطوع ----------
+
+    private fun setupBrightness() {
+        findViewById<Button>(R.id.brightDown).setOnClickListener { applyBrightness(store.brightness() - 1) }
+        findViewById<Button>(R.id.brightUp).setOnClickListener { applyBrightness(store.brightness() + 1) }
+        applyBrightness(store.brightness())
+    }
+
+    private fun applyBrightness(requested: Int) {
+        val level = requested.coerceIn(1, 10)
+        store.setBrightness(level)
+        findViewById<TextView>(R.id.brightText).text = String.format(Locale.US, "سطوع %d", level)
+        // سطوع نافذة اللانشر
+        val attrs = window.attributes
+        attrs.screenBrightness = level / 10f
+        window.attributes = attrs
+        // وسطوع النظام كله لو مسموح لنا
+        try {
+            if (Build.VERSION.SDK_INT < 23 || android.provider.Settings.System.canWrite(this)) {
+                android.provider.Settings.System.putInt(
+                    contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, level * 255 / 10
+                )
+            }
+        } catch (_: Throwable) {
         }
     }
 
@@ -354,7 +385,7 @@ class HomeActivity : Activity() {
             minute = 0
         }
         val hour12 = ((hour % 24) + 11) % 12 + 1
-        return String.format(arabic, "%d:%02d", hour12, minute)
+        return String.format(Locale.US, "%d:%02d", hour12, minute)
     }
 
     private fun setupPrayerRow() {
@@ -384,9 +415,34 @@ class HomeActivity : Activity() {
         }
     }
 
+    /** الساعة بنظام 12 ساعة، وجنبها ص أو م بخط أصغر. */
+    private fun clockWithPeriod(): CharSequence {
+        val text = TimeSource.format("h:mm a")
+        val space = text.indexOf(' ')
+        if (space < 0) return text
+        val span = android.text.SpannableString(text)
+        span.setSpan(
+            android.text.style.RelativeSizeSpan(0.42f), space, text.length,
+            android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return span
+    }
+
     /** يحدّث الساعة والتاريخ والصلاة القادمة، في الواجهة وفي شاشة الانتظار. */
     private fun refreshTimeViews() {
-        val time = TimeSource.format("HH:mm")
+        if (!TimeSource.valid()) {
+            // الراديو رجع لتاريخ المصنع وما وصل وقت الأقمار بعد
+            clockText.text = "--:--"
+            dateText.text = "بانتظار وقت GPS"
+            nextPrayerLabel = "المواقيت بانتظار GPS"
+            nextPrayerText.text = nextPrayerLabel
+            for (v in prayerTimeViews) v.text = "--"
+            idleClock.text = "--:--"
+            idlePrayer.text = ""
+            idleNowPlaying.text = music.nowPlaying
+            return
+        }
+        val time = clockWithPeriod()
         clockText.text = time
         dateText.text = TimeSource.format("EEEE d MMMM")
 
@@ -405,9 +461,9 @@ class HomeActivity : Activity() {
         val remaining = Math.max(0, Math.round((nextTime - now) * 60.0).toInt())
         val name = PrayerCalc.NAMES[PRAYERS[nextIndex]]
         nextPrayerLabel = if (remaining >= 60) {
-            String.format(arabic, "%s بعد %d:%02d", name, remaining / 60, remaining % 60)
+            String.format(Locale.US, "%s بعد %d:%02d", name, remaining / 60, remaining % 60)
         } else {
-            String.format(arabic, "%s بعد %d دقيقة", name, remaining)
+            String.format(Locale.US, "%s بعد %d دقيقة", name, remaining)
         }
         nextPrayerText.text = nextPrayerLabel
 
@@ -449,9 +505,9 @@ class HomeActivity : Activity() {
             return
         }
         val info = store.weather()
-        weatherTemp.text = String.format(arabic, "%d°", Math.round(info.temp))
+        weatherTemp.text = String.format(Locale.US, "%d°", Math.round(info.temp))
         weatherDesc.text = String.format(
-            arabic, "%s\nرياح %d كم/س", Weather.describe(info.code), Math.round(info.wind)
+            Locale.US, "%s\nرياح %d كم/س", Weather.describe(info.code), Math.round(info.wind)
         )
     }
 
@@ -487,7 +543,7 @@ class HomeActivity : Activity() {
     private fun setVolume(level: Int) {
         val clamped = level.coerceIn(0, volBar.max)
         volBar.value = clamped
-        volText.text = String.format(arabic, "%d", clamped)
+        volText.text = String.format(Locale.US, "%d", clamped)
         carVolume.set(clamped)
     }
 
@@ -496,7 +552,7 @@ class HomeActivity : Activity() {
         if (carVolume.busy) return
         val current = carVolume.current()
         volBar.value = current
-        volText.text = String.format(arabic, "%d", current)
+        volText.text = String.format(Locale.US, "%d", current)
     }
 
     // ---------- مربعات التطبيقات ----------
@@ -630,6 +686,7 @@ class HomeActivity : Activity() {
         registerReceiver(volumeReceiver, volumeFilter)
         startSpeed()
         AppRepo.load(this) { onAppsLoaded() }
+        photos.start()
         idle.poke()
         handler.removeCallbacks(tick)
         handler.post(tick)
@@ -641,6 +698,7 @@ class HomeActivity : Activity() {
         idle.stop()
         music.stop()
         stopSpeed()
+        photos.stop()
         carVolume.stop()
         try {
             unregisterReceiver(volumeReceiver)
@@ -669,8 +727,12 @@ class HomeActivity : Activity() {
 
     private fun requestMissingPermissions() {
         if (Build.VERSION.SDK_INT < 23) return
-        if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), PERMISSION_REQ)
+        val missing = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        ).filter { !granted(it) }
+        if (missing.isNotEmpty()) {
+            requestPermissions(missing.toTypedArray(), PERMISSION_REQ)
         }
     }
 
@@ -680,7 +742,10 @@ class HomeActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQ) startSpeed()
+        if (requestCode == PERMISSION_REQ) {
+            startSpeed()
+            photos.scan()
+        }
     }
 
     private fun startSpeed() {

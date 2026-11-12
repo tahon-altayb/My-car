@@ -45,7 +45,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     private val listenerComponent = ComponentName(activity, NowPlayingService::class.java)
 
     private var controller: MediaController? = null
-    val bt = BtRemote(activity)
+    val bt = BtRemote.get(activity)
     private var listening = false
     private var userSeeking = false
     private var durationMs = 0L
@@ -99,6 +99,8 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
                 c.transportControls.play()
             }
         }
+        activity.findViewById<View>(R.id.musicBack10).setOnClickListener { jump(-10_000L) }
+        activity.findViewById<View>(R.id.musicFwd10).setOnClickListener { jump(10_000L) }
         activity.findViewById<View>(R.id.musicInfo).setOnClickListener {
             if (!hasAccess()) openAccessSettings()
         }
@@ -118,6 +120,31 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
         })
     }
 
+    /** تقديم أو ترجيع بالملّي ثانية. */
+    private fun jump(deltaMs: Long) {
+        val c = controller
+        if (c != null) {
+            val state = c.playbackState ?: return
+            var position = state.position
+            if (state.state == PlaybackState.STATE_PLAYING) {
+                position += ((SystemClock.elapsedRealtime() - state.lastPositionUpdateTime) *
+                    state.playbackSpeed).toLong()
+            }
+            var target = position + deltaMs
+            if (target < 0) target = 0
+            if (durationMs > 0 && target > durationMs) target = durationMs
+            c.transportControls.seekTo(target)
+            return
+        }
+        if (bt.seen) {
+            // البلوتوث ما فيه "اذهب للثانية كذا"، فيه تقديم سريع بالضغط المستمر فقط
+            val key = if (deltaMs > 0) BtRemote.KEY_FAST_FORWARD else BtRemote.KEY_REWIND
+            if (!bt.hold(key, 1200L)) {
+                Toast.makeText(activity, "الجوال ما يدعم التقديم عن طريق البلوتوث", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private val btRecheck = Runnable { renderBluetooth() }
 
     /** لما ما فيه مشغّل داخل الراديو والموسيقى جاية من الجوال بالبلوتوث. */
@@ -135,7 +162,6 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     }
 
     fun start() {
-        bt.start()
         if (!hasAccess()) {
             showNoAccess()
             return
@@ -152,7 +178,6 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     }
 
     fun stop() {
-        bt.stop()
         handler.removeCallbacks(btRecheck)
         handler.removeCallbacks(tick)
         if (listening) {
@@ -271,6 +296,6 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
 
     private fun formatTime(ms: Long): String {
         val totalSeconds = ms / 1000L
-        return String.format(Locale("ar"), "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+        return String.format(Locale.US, "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }

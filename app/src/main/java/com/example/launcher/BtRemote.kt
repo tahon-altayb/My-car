@@ -13,9 +13,24 @@ import android.content.IntentFilter
  * عن طريق واجهة AVRCP المخفية في نظام الراديو.
  * ويسجّل رسائل برنامج البلوتوث حق المصنع عشان نعرف شكل بيانات اسم الأغنية.
  */
-class BtRemote(private val context: Context) {
+class BtRemote private constructor(private val context: Context) {
 
     companion object {
+        const val KEY_FAST_FORWARD = 0x49
+        const val KEY_REWIND = 0x48
+        private var instance: BtRemote? = null
+
+        /** نسخة وحدة تعيش مع التطبيق، عشان السجل ما ينقطع لما تطلع من اللانشر. */
+        fun get(context: Context): BtRemote {
+            var current = instance
+            if (current == null) {
+                current = BtRemote(context.applicationContext)
+                instance = current
+                current.start()
+            }
+            return current
+        }
+
         private const val PROFILE_AVRCP_CONTROLLER = 12
         const val KEY_PLAY = 0x44
         const val KEY_PAUSE = 0x46
@@ -51,7 +66,15 @@ class BtRemote(private val context: Context) {
 
     /** الجوال يشغّل الآن؟ رسالة الموضع تجي كل ثانية طول ما الأغنية شغالة. */
     val playing: Boolean
-        get() = a2dpPlaying || android.os.SystemClock.elapsedRealtime() - lastPositionEvent < 2500L
+        get() {
+            val now = android.os.SystemClock.elapsedRealtime()
+            // بعد ضغطة المستخدم نعرض الحالة المتوقعة فوراً، لين توصل الحالة الحقيقية
+            if (now < expectUntil) return expected
+            return a2dpPlaying || now - lastPositionEvent < 2500L
+        }
+
+    private var expected = false
+    private var expectUntil = 0L
 
     /** شفنا نشاط موسيقى بلوتوث في هذي الجلسة؟ */
     var seen = false
@@ -112,7 +135,7 @@ class BtRemote(private val context: Context) {
         }
     }
 
-    fun start() {
+    private fun start() {
         try {
             val filter = IntentFilter(A2DP_PLAYING_CHANGED)
             for (a in VENDOR_ACTIONS) filter.addAction(VENDOR_PREFIX + a)
@@ -127,21 +150,6 @@ class BtRemote(private val context: Context) {
         } catch (e: Throwable) {
             note("getProfileProxy failed: $e")
         }
-    }
-
-    fun stop() {
-        try {
-            context.unregisterReceiver(receiver)
-        } catch (_: Throwable) {
-        }
-        try {
-            val p = proxy as? BluetoothProfile
-            if (p != null) {
-                BluetoothAdapter.getDefaultAdapter()?.closeProfileProxy(PROFILE_AVRCP_CONTROLLER, p)
-            }
-        } catch (_: Throwable) {
-        }
-        proxy = null
     }
 
     private fun device(): BluetoothDevice? {
@@ -181,7 +189,36 @@ class BtRemote(private val context: Context) {
     }
 
     fun playPause() {
-        if (!send(if (playing) KEY_PAUSE else KEY_PLAY)) vendor("xy.android.playpause")
+        val wasPlaying = playing
+        if (!send(if (wasPlaying) KEY_PAUSE else KEY_PLAY)) vendor("xy.android.playpause")
+        expected = !wasPlaying
+        expectUntil = android.os.SystemClock.elapsedRealtime() + 3500L
+        if (wasPlaying) a2dpPlaying = false
+        onChange?.invoke()
+    }
+
+    /** تقديم أو ترجيع سريع: نضغط الزر مدة ثم نرفعه. يرجع false لو الراديو ما يدعمه. */
+    fun hold(key: Int, ms: Long): Boolean {
+        val p = proxy ?: return false
+        val dev = device() ?: return false
+        return try {
+            val m = p.javaClass.getMethod(
+                "sendPassThroughCmd", BluetoothDevice::class.java,
+                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+            )
+            m.invoke(p, dev, key, 0)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                    m.invoke(p, dev, key, 1)
+                } catch (_: Throwable) {
+                }
+            }, ms)
+            note("TX hold 0x" + Integer.toHexString(key) + " " + ms + "ms")
+            true
+        } catch (e: Throwable) {
+            note("TX hold failed: " + (e.cause ?: e))
+            false
+        }
     }
 
     fun next() {
