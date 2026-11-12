@@ -549,6 +549,33 @@
                 android:textColor="?attr/lText"
                 android:textSize="18sp" />
 
+            <!-- يظهران أثناء سحب تطبيق فقط -->
+            <TextView
+                android:id="@+id/dropHide"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginLeft="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tile"
+                android:gravity="center"
+                android:text="اسحب هنا للإخفاء"
+                android:textColor="?attr/lText"
+                android:textSize="17sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/dropTop"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginLeft="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tile"
+                android:gravity="center"
+                android:text="اسحب هنا لأول القائمة"
+                android:textColor="?attr/lText"
+                android:textSize="17sp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/drawerTitle"
                 android:layout_width="0dp"
@@ -617,4 +644,21 @@
                 android:textSize="24sp" />
         </RelativeLayout>
     </FrameLayout>
+
+    <!-- تنبيه الصلاة: يظهر فوق كل شي، حتى شاشة الانتظار -->
+    <TextView
+        android:id="@+id/alertBanner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="70dp"
+        android:background="@drawable/bg_round_accent_rect"
+        android:paddingLeft="28dp"
+        android:paddingTop="14dp"
+        android:paddingRight="28dp"
+        android:paddingBottom="14dp"
+        android:textColor="?attr/lOnAccent"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 </FrameLayout>

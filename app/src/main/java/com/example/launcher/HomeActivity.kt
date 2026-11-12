@@ -86,6 +86,12 @@ class HomeActivity : Activity() {
     private val prayerTimeViews = ArrayList<TextView>()
 
     private val drawerAdapter = DrawerAdapter()
+
+    /** التطبيقات المعروضة في القائمة: بترتيب المستخدم وبدون المخفية. */
+    private val drawerApps = ArrayList<AppEntry>()
+    private var dragging: AppEntry? = null
+    private var dragPos = -1
+    private var lastMoveAt = 0L
     private var pickerSlot: String? = null
 
     private var appliedDay = false
@@ -524,6 +530,7 @@ class HomeActivity : Activity() {
         val nextIndex = if (next >= 0) next else 0
         val remaining = Math.max(0, Math.round((nextTime - now) * 60.0).toInt())
         val name = PrayerCalc.NAMES[PRAYERS[nextIndex]]
+        checkPrayerAlert(name, remaining)
         nextPrayerLabel = if (remaining >= 60) {
             String.format(Locale.US, "%s بعد %d:%02d", name, remaining / 60, remaining % 60)
         } else {
@@ -544,6 +551,43 @@ class HomeActivity : Activity() {
         idleClock.text = time
         idlePrayer.text = nextPrayerLabel
         idleNowPlaying.text = music.nowPlaying
+    }
+
+    // ---------- تنبيه الصلاة ----------
+
+    private var lastNextPrayer = ""
+    private var alertedFor = ""
+    private val hideBanner = Runnable { findViewById<View>(R.id.alertBanner).visibility = View.GONE }
+
+    private fun checkPrayerAlert(nextName: String, remainingMin: Int) {
+        val before = store.str("prayer_alert", "10").toIntOrNull() ?: 10
+        if (before <= 0) {
+            lastNextPrayer = nextName
+            return
+        }
+        // الصلاة القادمة تغيّرت واللانشر شغال: معناها دخل وقت اللي قبلها
+        if (lastNextPrayer.isNotEmpty() && lastNextPrayer != nextName) {
+            showBanner("حان الآن وقت صلاة $lastNextPrayer")
+        } else if (remainingMin in 1..before && before - remainingMin <= 1 && alertedFor != nextName) {
+            alertedFor = nextName
+            showBanner(String.format(Locale.US, "باقي %d دقائق على صلاة %s", remainingMin, nextName))
+        }
+        if (lastNextPrayer != nextName) alertedFor = ""
+        lastNextPrayer = nextName
+    }
+
+    private fun showBanner(text: String) {
+        val banner = findViewById<TextView>(R.id.alertBanner)
+        banner.text = text
+        banner.visibility = View.VISIBLE
+        handler.removeCallbacks(hideBanner)
+        handler.postDelayed(hideBanner, 25_000L)
+        try {
+            val tone = android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 70)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 500)
+            handler.postDelayed({ tone.release() }, 1500L)
+        } catch (_: Throwable) {
+        }
     }
 
     /** ساعة الراديو قد تكون غلط، فنصححها من وقت الـGPS. */
@@ -662,7 +706,30 @@ class HomeActivity : Activity() {
         }
     }
 
+    private fun splitList(key: String): List<String> =
+        store.str(key, "").split("\n").filter { it.isNotEmpty() }
+
+    /** يبني قائمة العرض من التطبيقات المثبتة + ترتيب المستخدم + المخفية. */
+    private fun rebuildDrawerApps() {
+        val hidden = splitList("hidden_apps").toSet()
+        val order = splitList("app_order")
+        val rank = HashMap<String, Int>()
+        for (i in order.indices) rank[order[i]] = i
+        val visible = AppRepo.apps.filter { it.pkg !in hidden }
+        // اللي له ترتيب محفوظ يجي بترتيبه، والجديد يجي بعدهم أبجدياً
+        val sorted = visible.sortedWith(
+            compareBy<AppEntry> { rank[it.pkg] ?: Int.MAX_VALUE }.thenBy { it.label.lowercase() }
+        )
+        drawerApps.clear()
+        drawerApps.addAll(sorted)
+    }
+
+    private fun saveDrawerOrder() {
+        store.setQuiet("app_order", drawerApps.joinToString("\n") { it.pkg })
+    }
+
     private fun onAppsLoaded() {
+        if (dragging == null) rebuildDrawerApps()
         drawerAdapter.notifyDataSetChanged()
         refreshTiles()
     }
@@ -683,7 +750,7 @@ class HomeActivity : Activity() {
         val grid = findViewById<GridView>(R.id.drawerGrid)
         grid.adapter = drawerAdapter
         grid.setOnItemClickListener { _, _, position, _ ->
-            val entry = AppRepo.apps.getOrNull(position) ?: return@setOnItemClickListener
+            val entry = drawerApps.getOrNull(position) ?: return@setOnItemClickListener
             val slot = pickerSlot
             if (slot != null) {
                 store.set(slot, entry.pkg)
@@ -694,6 +761,7 @@ class HomeActivity : Activity() {
                 closeDrawer(animate = false)
             }
         }
+        setupDrawerDrag(grid)
         findViewById<Button>(R.id.drawerClose).setOnClickListener { closeDrawer(animate = true) }
         findViewById<View>(R.id.drawerHandle).setOnClickListener { openDrawer(null) }
         findViewById<Button>(R.id.drawerDiag).setOnClickListener {
@@ -701,12 +769,103 @@ class HomeActivity : Activity() {
         }
     }
 
+    // ---------- ترتيب التطبيقات بالسحب والإفلات ----------
+
+    private fun setupDrawerDrag(grid: GridView) {
+        val dropHide = findViewById<TextView>(R.id.dropHide)
+        val dropTop = findViewById<TextView>(R.id.dropTop)
+        val edge = (70 * resources.displayMetrics.density).toInt()
+
+        grid.setOnItemLongClickListener { _, view, position, _ ->
+            val entry = drawerApps.getOrNull(position) ?: return@setOnItemLongClickListener false
+            if (pickerSlot != null) return@setOnItemLongClickListener false
+            dragging = entry
+            dragPos = position
+            dropHide.visibility = View.VISIBLE
+            dropTop.visibility = View.VISIBLE
+            drawerTitle.visibility = View.GONE
+            @Suppress("DEPRECATION")
+            view.startDrag(null, View.DragShadowBuilder(view), null, 0)
+            drawerAdapter.notifyDataSetChanged()
+            true
+        }
+
+        grid.setOnDragListener { _, event ->
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                    val item = dragging
+                    if (item != null) {
+                        val x = event.x.toInt()
+                        val y = event.y.toInt()
+                        // تمرير تلقائي لما تقرب من الحافة
+                        if (y < edge) grid.smoothScrollBy(-edge, 120)
+                        else if (y > grid.height - edge) grid.smoothScrollBy(edge, 120)
+
+                        val target = grid.pointToPosition(x, y)
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (target != android.widget.AdapterView.INVALID_POSITION &&
+                            target != dragPos && target < drawerApps.size &&
+                            now - lastMoveAt > 140L
+                        ) {
+                            val from = drawerApps.indexOf(item)
+                            if (from >= 0) {
+                                drawerApps.removeAt(from)
+                                drawerApps.add(target, item)
+                                dragPos = target
+                                lastMoveAt = now
+                                drawerAdapter.notifyDataSetChanged()
+                            }
+                        }
+                    }
+                }
+                android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                    if (dragging != null) {
+                        dragging = null
+                        dragPos = -1
+                        saveDrawerOrder()
+                        dropHide.visibility = View.GONE
+                        dropTop.visibility = View.GONE
+                        dropHide.alpha = 1f
+                        dropTop.alpha = 1f
+                        drawerTitle.visibility = View.VISIBLE
+                        drawerAdapter.notifyDataSetChanged()
+                    }
+                }
+            }
+            true
+        }
+
+        val zoneListener = View.OnDragListener { zone, event ->
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_ENTERED -> zone.alpha = 0.5f
+                android.view.DragEvent.ACTION_DRAG_EXITED -> zone.alpha = 1f
+                android.view.DragEvent.ACTION_DROP -> {
+                    val item = dragging
+                    if (item != null) {
+                        drawerApps.remove(item)
+                        if (zone.id == R.id.dropTop) {
+                            drawerApps.add(0, item)
+                        } else {
+                            val hidden = splitList("hidden_apps").toMutableList()
+                            hidden.add(item.pkg)
+                            store.setQuiet("hidden_apps", hidden.joinToString("\n"))
+                            toast("انخفى " + item.label + ". ترجعه من الإعدادات")
+                        }
+                    }
+                }
+            }
+            true
+        }
+        dropHide.setOnDragListener(zoneListener)
+        dropTop.setOnDragListener(zoneListener)
+    }
+
     private fun isDrawerOpen(): Boolean = drawer.visibility == View.VISIBLE
 
     /** slot = null يفتح التطبيقات عادي. غير كذا يختار تطبيق للمربع المحدد. */
     private fun openDrawer(slot: String?) {
         pickerSlot = slot
-        drawerTitle.text = if (slot == null) "كل التطبيقات" else "اختر تطبيق للمربع"
+        drawerTitle.text = if (slot == null) "اضغط مطولاً على تطبيق لترتيبه" else "اختر تطبيق للمربع"
         if (isDrawerOpen()) return
         drawer.animate().cancel()
         drawer.translationY = root.height.toFloat()
@@ -730,15 +889,17 @@ class HomeActivity : Activity() {
     }
 
     private inner class DrawerAdapter : BaseAdapter() {
-        override fun getCount(): Int = AppRepo.apps.size
-        override fun getItem(position: Int): Any = AppRepo.apps[position]
+        override fun getCount(): Int = drawerApps.size
+        override fun getItem(position: Int): Any = drawerApps[position]
         override fun getItemId(position: Int): Long = position.toLong()
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val view = convertView ?: layoutInflater.inflate(R.layout.item_app, parent, false)
-            val entry = AppRepo.apps[position]
+            val entry = drawerApps[position]
             view.findViewById<ImageView>(R.id.appIcon).setImageDrawable(entry.icon)
             view.findViewById<TextView>(R.id.appLabel).text = entry.label
+            // مكان التطبيق المسحوب يبان باهت
+            view.alpha = if (entry === dragging) 0.2f else 1f
             return view
         }
     }

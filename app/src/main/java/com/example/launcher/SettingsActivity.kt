@@ -77,6 +77,24 @@ class SettingsActivity : Activity() {
             listOf("5 ثواني", "7 ثواني", "15 ثانية", "30 ثانية", "دقيقة"), "7"
         )
 
+        header("قائمة التطبيقات")
+        action("التطبيقات المخفية", "إظهار الكل") {
+            store.setQuiet("hidden_apps", "")
+            store.setStr("apps_reset", System.currentTimeMillis().toString())
+            android.widget.Toast.makeText(this, "رجعت كل التطبيقات", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        action("ترتيب القائمة", "رجوع للترتيب الأبجدي") {
+            store.setQuiet("app_order", "")
+            store.setStr("apps_reset", System.currentTimeMillis().toString())
+            android.widget.Toast.makeText(this, "رجع الترتيب أبجدي", android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        header("الصلاة")
+        choice(
+            "تنبيه قبل الصلاة", "prayer_alert", listOf("10", "15", "5", "0"),
+            listOf("قبل 10 دقائق", "قبل 15 دقيقة", "قبل 5 دقائق", "بدون تنبيه"), "10"
+        )
+
         header("أدوات")
         action("صفحة التشخيص", "فتح") { startActivity(Intent(this, DiagActivity::class.java)) }
     }
