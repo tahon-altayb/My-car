@@ -2,11 +2,15 @@ package com.example.launcher
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -15,8 +19,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.Gravity
 import android.view.MotionEvent
-import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
@@ -24,19 +29,29 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Calendar
 import java.util.Locale
 
 class HomeActivity : Activity() {
 
     companion object {
-        private const val IDLE_TIMEOUT_MS = 120_000L  // دقيقتين بدون لمس
-        private const val SWIPE_TRIGGER_PX = 50f      // مسافة السحب للأعلى اللي تفتح الدرج
+        private const val IDLE_TIMEOUT_MS = 120_000L       // دقيقتين بدون لمس
+        private const val SWIPE_TRIGGER_PX = 50f           // مسافة السحب للأعلى اللي تفتح الدرج
+        private const val TICK_MS = 15_000L
+        private const val WEATHER_MAX_AGE_MS = 30 * 60_000L
+        private const val WEATHER_RETRY_MS = 2 * 60_000L
         private const val PERMISSION_REQ = 1
+        private const val WALLPAPER_REQ = 2
         private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
+        private const val SAUDI_UTC_OFFSET = 3.0
+
+        // مواضع الصلوات الخمس في نتيجة PrayerCalc (نتجاوز الشروق)
+        private val PRAYERS = intArrayOf(0, 2, 3, 4, 5)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -44,7 +59,6 @@ class HomeActivity : Activity() {
 
     private lateinit var store: AppStore
     private lateinit var idle: IdleController
-    private lateinit var camera: CameraTile
     private lateinit var music: MusicTile
     private lateinit var audio: AudioManager
 
@@ -52,17 +66,31 @@ class HomeActivity : Activity() {
     private lateinit var dateText: TextView
     private lateinit var clockText: TextView
     private lateinit var speedText: TextView
+    private lateinit var weatherTemp: TextView
+    private lateinit var weatherDesc: TextView
+    private lateinit var nextPrayerText: TextView
     private lateinit var idleOverlay: FrameLayout
     private lateinit var idleClock: TextView
+    private lateinit var idlePrayer: TextView
     private lateinit var idleNowPlaying: TextView
     private lateinit var volBar: VolumeBar
     private lateinit var volText: TextView
     private lateinit var volumeColumn: View
     private lateinit var drawer: View
     private lateinit var drawerTitle: TextView
+    private lateinit var wallpaperView: ImageView
+    private lateinit var wallpaperScrim: View
+
+    private val prayerNameViews = ArrayList<TextView>()
+    private val prayerTimeViews = ArrayList<TextView>()
 
     private val drawerAdapter = DrawerAdapter()
     private var pickerSlot: String? = null
+
+    private var appliedDay = false
+    private var nextPrayerLabel = ""
+    private var weatherLoading = false
+    private var lastWeatherAttempt = 0L
 
     // حالة اللمس
     private var downX = 0f
@@ -77,10 +105,16 @@ class HomeActivity : Activity() {
         R.id.slot3 to AppStore.SLOT_3
     )
 
-    private val clockTick = object : Runnable {
+    private val tick = object : Runnable {
         override fun run() {
-            updateClock()
-            handler.postDelayed(this, 30_000L)
+            refreshTimeViews()
+            maybeRefreshWeather()
+            // الوضع التلقائي: يتبدل عند الشروق والمغرب
+            if (store.themeMode() == AppStore.MODE_AUTO && isDayNow() != appliedDay) {
+                recreate()
+                return
+            }
+            handler.postDelayed(this, TICK_MS)
         }
     }
 
@@ -96,6 +130,15 @@ class HomeActivity : Activity() {
                 val kmh = Math.round(location.speed * 3.6f)
                 speedText.text = String.format(arabic, "%d", kmh)
             }
+            syncClock(location.time)
+            val moved = Math.abs(location.latitude - store.lat()) > 0.05 ||
+                Math.abs(location.longitude - store.lng()) > 0.05
+            if (moved) {
+                store.setLocation(location.latitude, location.longitude)
+                refreshTimeViews()
+                lastWeatherAttempt = 0L
+                maybeRefreshWeather(force = true)
+            }
         }
 
         @Deprecated("Deprecated in Java")
@@ -108,7 +151,9 @@ class HomeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         store = AppStore(this)
-        setTheme(if (store.isDay()) R.style.LauncherDay else R.style.LauncherNight)
+        TimeSource.offsetMs = store.clockOffset()
+        appliedDay = isDayNow()
+        setTheme(if (appliedDay) R.style.LauncherDay else R.style.LauncherNight)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
@@ -118,55 +163,312 @@ class HomeActivity : Activity() {
         dateText = findViewById(R.id.dateText)
         clockText = findViewById(R.id.clockText)
         speedText = findViewById(R.id.speedText)
+        weatherTemp = findViewById(R.id.weatherTemp)
+        weatherDesc = findViewById(R.id.weatherDesc)
+        nextPrayerText = findViewById(R.id.nextPrayerText)
         idleOverlay = findViewById(R.id.idleOverlay)
         idleClock = findViewById(R.id.idleClock)
+        idlePrayer = findViewById(R.id.idlePrayer)
         idleNowPlaying = findViewById(R.id.idleNowPlaying)
         volBar = findViewById(R.id.volBar)
         volText = findViewById(R.id.volText)
         volumeColumn = findViewById(R.id.volumeColumn)
         drawer = findViewById(R.id.drawer)
         drawerTitle = findViewById(R.id.drawerTitle)
+        wallpaperView = findViewById(R.id.wallpaper)
+        wallpaperScrim = findViewById(R.id.wallpaperScrim)
 
-        camera = CameraTile(
-            this,
-            findViewById<TextureView>(R.id.cameraTexture),
-            findViewById(R.id.cameraStatus)
-        )
         music = MusicTile(this, handler)
 
         setupThemeToggle()
+        setupWallpaper()
+        setupPrayerRow()
         setupVolume()
         setupTiles()
         setupDrawer()
-
-        findViewById<View>(R.id.cameraTile).setOnClickListener {
-            requestMissingPermissions()
-            camera.open()
-        }
 
         idle = IdleController(
             handler,
             IDLE_TIMEOUT_MS,
             onIdle = {
-                idleClock.text = currentTime()
-                idleNowPlaying.text = music.nowPlaying
+                refreshTimeViews()
                 idleOverlay.visibility = View.VISIBLE
             },
             onWake = { idleOverlay.visibility = View.GONE }
         )
 
+        showWeather()
         requestMissingPermissions()
     }
 
-    // ---------- الوضع النهاري / الليلي ----------
+    // ---------- الوضع: تلقائي / نهاري / ليلي ----------
+
+    private fun isDayNow(): Boolean {
+        return when (store.themeMode()) {
+            AppStore.MODE_DAY -> true
+            AppStore.MODE_NIGHT -> false
+            else -> {
+                val times = prayerTimes()
+                val now = nowHours()
+                now >= times[1] && now < times[4]   // من الشروق إلى المغرب
+            }
+        }
+    }
 
     private fun setupThemeToggle() {
         val toggle = findViewById<Button>(R.id.themeToggle)
-        // الزر يعرض الوضع اللي بتنتقل له
-        toggle.text = if (store.isDay()) "ليلي" else "نهاري"
+        toggle.text = when (store.themeMode()) {
+            AppStore.MODE_DAY -> "الوضع: نهاري"
+            AppStore.MODE_NIGHT -> "الوضع: ليلي"
+            else -> "الوضع: تلقائي"
+        }
         toggle.setOnClickListener {
-            store.setDay(!store.isDay())
+            val next = when (store.themeMode()) {
+                AppStore.MODE_AUTO -> AppStore.MODE_DAY
+                AppStore.MODE_DAY -> AppStore.MODE_NIGHT
+                else -> AppStore.MODE_AUTO
+            }
+            store.setThemeMode(next)
             recreate()
+        }
+    }
+
+    // ---------- الخلفية ----------
+
+    private fun wallpaperFile(): File = File(filesDir, "wallpaper.jpg")
+
+    private fun setupWallpaper() {
+        findViewById<Button>(R.id.wallpaperButton).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("الخلفية")
+                .setItems(arrayOf("اختيار صورة", "إزالة الخلفية")) { _, which ->
+                    if (which == 0) {
+                        pickWallpaper()
+                    } else {
+                        wallpaperFile().delete()
+                        loadWallpaper()
+                    }
+                }
+                .show()
+        }
+        loadWallpaper()
+    }
+
+    private fun pickWallpaper() {
+        try {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).setType("image/*")
+            startActivityForResult(intent, WALLPAPER_REQ)
+        } catch (e: Exception) {
+            toast("ما لقيت تطبيق يختار الصور على الراديو")
+        }
+    }
+
+    private fun loadWallpaper() {
+        val file = wallpaperFile()
+        if (!file.exists()) {
+            wallpaperView.setImageDrawable(null)
+            wallpaperView.visibility = View.GONE
+            wallpaperScrim.visibility = View.GONE
+            return
+        }
+        Thread {
+            val bitmap = try {
+                BitmapFactory.decodeFile(file.absolutePath)
+            } catch (e: Throwable) {
+                null
+            }
+            handler.post {
+                if (bitmap != null && !isFinishing) {
+                    wallpaperView.setImageBitmap(bitmap)
+                    wallpaperView.visibility = View.VISIBLE
+                    wallpaperScrim.visibility = View.VISIBLE
+                }
+            }
+        }.start()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != WALLPAPER_REQ || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        Thread {
+            // نصغّر الصورة لمقاس الشاشة قبل الحفظ، عشان ما تاخذ ذاكرة الراديو
+            val saved = try {
+                val temp = File(cacheDir, "wallpaper_pick")
+                contentResolver.openInputStream(uri)!!.use { input ->
+                    FileOutputStream(temp).use { output -> input.copyTo(output) }
+                }
+                val bounds = BitmapFactory.Options()
+                bounds.inJustDecodeBounds = true
+                BitmapFactory.decodeFile(temp.absolutePath, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 1024) sample *= 2
+                val options = BitmapFactory.Options()
+                options.inSampleSize = sample
+                val bitmap = BitmapFactory.decodeFile(temp.absolutePath, options)
+                temp.delete()
+                if (bitmap == null) {
+                    false
+                } else {
+                    FileOutputStream(wallpaperFile()).use {
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it)
+                    }
+                    true
+                }
+            } catch (e: Throwable) {
+                false
+            }
+            handler.post {
+                if (saved) loadWallpaper() else toast("تعذر فتح الصورة")
+            }
+        }.start()
+    }
+
+    // ---------- الوقت ومواقيت الصلاة ----------
+
+    private fun prayerTimes(): DoubleArray {
+        val c = TimeSource.calendar()
+        return PrayerCalc.compute(
+            c.get(Calendar.YEAR),
+            c.get(Calendar.MONTH) + 1,
+            c.get(Calendar.DAY_OF_MONTH),
+            store.lat(),
+            store.lng(),
+            SAUDI_UTC_OFFSET
+        )
+    }
+
+    private fun nowHours(): Double {
+        val c = TimeSource.calendar()
+        return c.get(Calendar.HOUR_OF_DAY) + c.get(Calendar.MINUTE) / 60.0 +
+            c.get(Calendar.SECOND) / 3600.0
+    }
+
+    /** يحوّل 14.75 إلى "٢:٤٥" بنظام 12 ساعة. */
+    private fun formatHours(value: Double): String {
+        var hour = Math.floor(value).toInt()
+        var minute = Math.round((value - hour) * 60.0).toInt()
+        if (minute == 60) {
+            hour += 1
+            minute = 0
+        }
+        val hour12 = ((hour % 24) + 11) % 12 + 1
+        return String.format(arabic, "%d:%02d", hour12, minute)
+    }
+
+    private fun setupPrayerRow() {
+        val row = findViewById<LinearLayout>(R.id.prayerRow)
+        val cells = ArrayList<LinearLayout>()
+        for (i in PRAYERS.indices) {
+            val name = TextView(this)
+            name.text = PrayerCalc.NAMES[PRAYERS[i]]
+            name.textSize = 14f
+            name.gravity = Gravity.CENTER
+            val time = TextView(this)
+            time.textSize = 16f
+            time.gravity = Gravity.CENTER
+            time.setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER
+            cell.addView(name)
+            cell.addView(time)
+            prayerNameViews.add(name)
+            prayerTimeViews.add(time)
+            cells.add(cell)
+        }
+        // الفجر على اليمين
+        for (cell in cells.reversed()) {
+            row.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+    }
+
+    /** يحدّث الساعة والتاريخ والصلاة القادمة، في الواجهة وفي شاشة الانتظار. */
+    private fun refreshTimeViews() {
+        val time = TimeSource.format("HH:mm")
+        clockText.text = time
+        dateText.text = TimeSource.format("EEEE d MMMM")
+
+        val times = prayerTimes()
+        val now = nowHours()
+        var next = -1
+        for (i in PRAYERS.indices) {
+            if (times[PRAYERS[i]] > now) {
+                next = i
+                break
+            }
+        }
+        // بعد العشاء: القادمة فجر بكرة (نفس وقت اليوم تقريباً)
+        val nextTime = if (next >= 0) times[PRAYERS[next]] else times[0] + 24.0
+        val nextIndex = if (next >= 0) next else 0
+        val remaining = Math.max(0, Math.round((nextTime - now) * 60.0).toInt())
+        val name = PrayerCalc.NAMES[PRAYERS[nextIndex]]
+        nextPrayerLabel = if (remaining >= 60) {
+            String.format(arabic, "%s بعد %d:%02d", name, remaining / 60, remaining % 60)
+        } else {
+            String.format(arabic, "%s بعد %d دقيقة", name, remaining)
+        }
+        nextPrayerText.text = nextPrayerLabel
+
+        val accent = themeColor(R.attr.lAccent)
+        val normal = themeColor(R.attr.lText)
+        val dim = themeColor(R.attr.lTextDim)
+        for (i in PRAYERS.indices) {
+            prayerTimeViews[i].text = formatHours(times[PRAYERS[i]])
+            val highlight = i == nextIndex
+            prayerTimeViews[i].setTextColor(if (highlight) accent else normal)
+            prayerNameViews[i].setTextColor(if (highlight) accent else dim)
+        }
+
+        idleClock.text = time
+        idlePrayer.text = nextPrayerLabel
+        idleNowPlaying.text = music.nowPlaying
+    }
+
+    /** ساعة الراديو قد تكون غلط، فنصححها من وقت الـGPS. */
+    private fun syncClock(gpsTime: Long) {
+        val check = Calendar.getInstance(TimeSource.zone)
+        check.timeInMillis = gpsTime
+        if (check.get(Calendar.YEAR) < 2025) return   // وقت GPS غير موثوق
+        var offset = gpsTime - System.currentTimeMillis()
+        if (Math.abs(offset) < 60_000L) offset = 0L
+        if (Math.abs(offset - TimeSource.offsetMs) > 30_000L) {
+            TimeSource.offsetMs = offset
+            store.setClockOffset(offset)
+            refreshTimeViews()
+        }
+    }
+
+    // ---------- الطقس ----------
+
+    private fun showWeather() {
+        if (store.weatherTime() == 0L) {
+            weatherTemp.text = ""
+            weatherDesc.text = "الطقس يحتاج اتصال بالإنترنت"
+            return
+        }
+        val info = store.weather()
+        weatherTemp.text = String.format(arabic, "%d°", Math.round(info.temp))
+        weatherDesc.text = String.format(
+            arabic, "%s\nرياح %d كم/س", Weather.describe(info.code), Math.round(info.wind)
+        )
+    }
+
+    private fun maybeRefreshWeather(force: Boolean = false) {
+        if (weatherLoading) return
+        val age = System.currentTimeMillis() - store.weatherTime()
+        val fresh = store.weatherTime() != 0L && age >= 0 && age < WEATHER_MAX_AGE_MS
+        if (fresh && !force) return
+        val sinceAttempt = SystemClock.elapsedRealtime() - lastWeatherAttempt
+        if (lastWeatherAttempt != 0L && sinceAttempt < WEATHER_RETRY_MS) return
+        lastWeatherAttempt = SystemClock.elapsedRealtime()
+        weatherLoading = true
+        Weather.fetch(store.lat(), store.lng()) { info ->
+            weatherLoading = false
+            if (info != null) {
+                store.setWeather(info, System.currentTimeMillis())
+                showWeather()
+            }
         }
     }
 
@@ -262,9 +564,7 @@ class HomeActivity : Activity() {
                 refreshTiles()
                 closeDrawer(animate = true)
             } else {
-                if (!launchPackage(entry.pkg)) {
-                    Toast.makeText(this, "تعذر فتح التطبيق", Toast.LENGTH_SHORT).show()
-                }
+                if (!launchPackage(entry.pkg)) toast("تعذر فتح التطبيق")
                 closeDrawer(animate = false)
             }
         }
@@ -318,23 +618,21 @@ class HomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        updateClock()
-        handler.post(clockTick)
         music.start()
-        camera.open()
         refreshVolume()
         registerReceiver(volumeReceiver, IntentFilter(VOLUME_CHANGED))
         startSpeed()
         AppRepo.load(this) { onAppsLoaded() }
         idle.poke()
+        handler.removeCallbacks(tick)
+        handler.post(tick)
     }
 
     override fun onPause() {
         super.onPause()
-        handler.removeCallbacks(clockTick)
+        handler.removeCallbacks(tick)
         idle.stop()
         music.stop()
-        camera.close()
         stopSpeed()
         try {
             unregisterReceiver(volumeReceiver)
@@ -348,7 +646,7 @@ class HomeActivity : Activity() {
         closeDrawer(animate = false)
     }
 
-    /** زر الرجوع ما يطلع من اللانشر (كان يرجّع للواجهة القديمة). */
+    /** زر الرجوع ما يطلع من اللانشر. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (isDrawerOpen()) closeDrawer(animate = true)
@@ -363,10 +661,8 @@ class HomeActivity : Activity() {
 
     private fun requestMissingPermissions() {
         if (Build.VERSION.SDK_INT < 23) return
-        val missing = listOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
-            .filter { !granted(it) }
-        if (missing.isNotEmpty()) {
-            requestPermissions(missing.toTypedArray(), PERMISSION_REQ)
+        if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), PERMISSION_REQ)
         }
     }
 
@@ -376,10 +672,7 @@ class HomeActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQ) {
-            camera.open()
-            startSpeed()
-        }
+        if (requestCode == PERMISSION_REQ) startSpeed()
     }
 
     private fun startSpeed() {
@@ -388,7 +681,7 @@ class HomeActivity : Activity() {
             val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locationListener)
         } catch (_: Exception) {
-            // ما فيه GPS أو الصلاحية مرفوضة: تبقى السرعة "--"
+            // ما فيه GPS أو الصلاحية مرفوضة
         }
     }
 
@@ -439,14 +732,9 @@ class HomeActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    // ---------- الساعة ----------
-
-    private fun updateClock() {
-        clockText.text = currentTime()
-        dateText.text = SimpleDateFormat("EEEE d MMMM", arabic).format(Date())
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
-
-    private fun currentTime(): String = SimpleDateFormat("HH:mm", arabic).format(Date())
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)

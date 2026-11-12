@@ -5,6 +5,23 @@
     android:layout_height="match_parent"
     android:background="?attr/lBg">
 
+    <!-- خلفية يختارها المستخدم، وفوقها طبقة تعتيم عشان النص يبقى واضح -->
+    <ImageView
+        android:id="@+id/wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/wallpaperScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.5"
+        android:background="?attr/lBg"
+        android:visibility="gone" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -26,8 +43,20 @@
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:background="@drawable/bg_tile"
-                android:minWidth="120dp"
+                android:minWidth="150dp"
                 android:stateListAnimator="@null"
+                android:textColor="?attr/lText"
+                android:textSize="18sp" />
+
+            <Button
+                android:id="@+id/wallpaperButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/bg_tile"
+                android:minWidth="100dp"
+                android:stateListAnimator="@null"
+                android:text="الخلفية"
                 android:textColor="?attr/lText"
                 android:textSize="18sp" />
 
@@ -83,7 +112,7 @@
                         android:id="@+id/speedText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="--"
+                        android:text="٠"
                         android:textColor="?attr/lAccent"
                         android:textSize="80sp"
                         android:textStyle="bold" />
@@ -111,29 +140,64 @@
                     android:layout_weight="3"
                     android:orientation="horizontal">
 
-                    <FrameLayout
-                        android:id="@+id/cameraTile"
+                    <!-- الطقس ومواقيت الصلاة -->
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_camera"
-                        android:padding="6dp">
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="14dp">
 
-                        <TextureView
-                            android:id="@+id/cameraTexture"
+                        <LinearLayout
                             android:layout_width="match_parent"
-                            android:layout_height="match_parent" />
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/weatherDesc"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:maxLines="2"
+                                android:textColor="?attr/lTextDim"
+                                android:textSize="15sp" />
+
+                            <TextView
+                                android:id="@+id/weatherTemp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginLeft="10dp"
+                                android:textColor="?attr/lText"
+                                android:textSize="40sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="8dp"
+                            android:layout_marginBottom="8dp"
+                            android:background="?attr/lStroke" />
 
                         <TextView
-                            android:id="@+id/cameraStatus"
-                            android:layout_width="wrap_content"
+                            android:id="@+id/nextPrayerText"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_gravity="center"
-                            android:gravity="center"
-                            android:text="الكاميرا"
-                            android:textColor="#94A3B8"
-                            android:textSize="18sp" />
-                    </FrameLayout>
+                            android:gravity="right"
+                            android:textColor="?attr/lAccent"
+                            android:textSize="22sp"
+                            android:textStyle="bold" />
+
+                        <LinearLayout
+                            android:id="@+id/prayerRow"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal" />
+                    </LinearLayout>
 
                     <!-- الموسيقى -->
                     <LinearLayout
@@ -417,13 +481,27 @@
         android:background="#000000"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/idleClock"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:textColor="#64748B"
-            android:textSize="96sp" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/idleClock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#94A3B8"
+                android:textSize="96sp" />
+
+            <TextView
+                android:id="@+id/idlePrayer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#64748B"
+                android:textSize="24sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/idleNowPlaying"
