@@ -522,6 +522,10 @@ class HomeActivity : Activity() {
         weatherLoading = true
         Weather.fetch(store.lat(), store.lng()) { info ->
             weatherLoading = false
+            if (Weather.serverTime > 0L) {
+                syncClock(Weather.serverTime)
+                Weather.serverTime = 0L
+            }
             if (info != null) {
                 store.setWeather(info, System.currentTimeMillis())
                 showWeather()
@@ -753,8 +757,62 @@ class HomeActivity : Activity() {
         try {
             val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locationListener)
+            startNmea(lm)
         } catch (_: Exception) {
             // ما فيه GPS أو الصلاحية مرفوضة
+        }
+    }
+
+    // وقت الأقمار من رسائل NMEA: يوصل قبل تحديد الموقع، وما يعتمد على ساعة الراديو
+    private var nmeaListener: Any? = null
+
+    private fun startNmea(lm: LocationManager) {
+        if (nmeaListener != null) return
+        try {
+            val type = Class.forName("android.location.GpsStatus\$NmeaListener")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, args ->
+                if (method.name == "onNmeaReceived" && args != null && args.size == 2) {
+                    val sentence = args[1] as? String
+                    if (sentence != null) handleNmea(sentence)
+                }
+                null
+            }
+            LocationManager::class.java.getMethod("addNmeaListener", type).invoke(lm, proxy)
+            nmeaListener = proxy
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun stopNmea(lm: LocationManager) {
+        val listener = nmeaListener ?: return
+        try {
+            val type = Class.forName("android.location.GpsStatus\$NmeaListener")
+            LocationManager::class.java.getMethod("removeNmeaListener", type).invoke(lm, listener)
+        } catch (_: Throwable) {
+        }
+        nmeaListener = null
+    }
+
+    /** يقرأ الوقت والتاريخ من رسالة RMC مثل: $GPRMC,hhmmss.ss,A,...,ddmmyy,... */
+    private fun handleNmea(sentence: String) {
+        try {
+            val parts = sentence.trim().split(",")
+            if (parts.size < 10 || !parts[0].endsWith("RMC")) return
+            val time = parts[1]
+            val date = parts[9]
+            if (time.length < 6 || date.length != 6) return
+            val utc = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+            utc.clear()
+            utc.set(
+                2000 + date.substring(4, 6).toInt(),
+                date.substring(2, 4).toInt() - 1,
+                date.substring(0, 2).toInt(),
+                time.substring(0, 2).toInt(),
+                time.substring(2, 4).toInt(),
+                time.substring(4, 6).toInt()
+            )
+            syncClock(utc.timeInMillis)
+        } catch (_: Throwable) {
         }
     }
 
@@ -762,6 +820,7 @@ class HomeActivity : Activity() {
         try {
             val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             lm.removeUpdates(locationListener)
+            stopNmea(lm)
         } catch (_: Exception) {
         }
     }

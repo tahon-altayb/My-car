@@ -12,6 +12,10 @@ class WeatherInfo(val temp: Double, val code: Int, val wind: Double)
 /** الطقس الحالي من خدمة Open-Meteo المجانية (تحتاج إنترنت، بدون مفتاح). */
 object Weather {
 
+    /** آخر وقت استلمناه من الخادم (UTC بالملّي ثانية)، صفر لو ما وصل. */
+    @Volatile
+    var serverTime: Long = 0L
+
     fun fetch(lat: Double, lng: Double, onResult: (WeatherInfo?) -> Unit) {
         Thread {
             val path = String.format(
@@ -32,6 +36,9 @@ object Weather {
             connection.connectTimeout = 8000
             connection.readTimeout = 8000
             val body = connection.inputStream.bufferedReader().use { it.readText() }
+            // وقت الخادم: نستخدمه لتصحيح الساعة لما يكون فيه نت
+            val date = connection.getHeaderFieldDate("Date", 0L)
+            if (date > 0L) serverTime = date
             val current = JSONObject(body).getJSONObject("current_weather")
             WeatherInfo(
                 current.getDouble("temperature"),

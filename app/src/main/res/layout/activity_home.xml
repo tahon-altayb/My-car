@@ -324,6 +324,7 @@
 
                             <Button
                                 android:id="@+id/musicBack10"
+                                android:visibility="gone"
                                 android:layout_width="46dp"
                                 android:layout_height="46dp"
                                 android:layout_marginRight="10dp"
@@ -366,6 +367,7 @@
 
                             <Button
                                 android:id="@+id/musicFwd10"
+                                android:visibility="gone"
                                 android:layout_width="46dp"
                                 android:layout_height="46dp"
                                 android:layout_marginLeft="10dp"
