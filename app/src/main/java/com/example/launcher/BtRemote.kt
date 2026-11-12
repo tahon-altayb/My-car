@@ -70,11 +70,58 @@ class BtRemote private constructor(private val context: Context) {
             val now = android.os.SystemClock.elapsedRealtime()
             // بعد ضغطة المستخدم نعرض الحالة المتوقعة فوراً، لين توصل الحالة الحقيقية
             if (now < expectUntil) return expected
+            // لو الجوال بلّغ بالحالة قريب نصدّقه، وإلا نعتمد على رسائل الموضع
+            if (reportedStatus == 2 && lastPositionEvent <= reportedAt) return false
+            if (reportedStatus == 1 && now - reportedAt < 3000L) return true
             return a2dpPlaying || now - lastPositionEvent < 2500L
         }
 
     private var expected = false
     private var expectUntil = 0L
+
+    var title = ""
+        private set
+    var artist = ""
+        private set
+    var durationMs = 0L
+        private set
+
+    /** حالة التشغيل اللي بلّغ عنها الجوال: 1 يشتغل، 2 متوقف، -1 ما وصلت. */
+    private var reportedStatus = -1
+    private var reportedAt = 0L
+
+    private fun extra(intent: Intent, suffix: String): Any? {
+        val extras = intent.extras ?: return null
+        for (key in extras.keySet()) {
+            if (key.endsWith(suffix)) return extras.get(key)
+        }
+        return null
+    }
+
+    private fun setStatus(status: Int) {
+        if (status == 1 || status == 2) {
+            reportedStatus = status
+            reportedAt = android.os.SystemClock.elapsedRealtime()
+            if (status == 2) a2dpPlaying = false
+        }
+    }
+
+    /** اسم الأغنية والفنان: القيم مرقمة VALUE_0.. ومعرفاتها ATTRIBUTE_ID_0.. (1 عنوان، 2 فنان). */
+    private fun readAttributes(intent: Intent) {
+        val count = (extra(intent, ".COUNT") as? Number)?.toInt() ?: 0
+        var newTitle = ""
+        var newArtist = ""
+        for (i in 0 until count) {
+            val id = (extra(intent, "ATTRIBUTE_ID_$i") as? Number)?.toInt() ?: continue
+            val value = extra(intent, "VALUE_$i") as? String ?: continue
+            if (id == 1) newTitle = value
+            if (id == 2) newArtist = value
+        }
+        if (newTitle.isNotEmpty()) {
+            title = newTitle
+            artist = newArtist
+        }
+    }
 
     /** شفنا نشاط موسيقى بلوتوث في هذي الجلسة؟ */
     var seen = false
@@ -103,6 +150,22 @@ class BtRemote private constructor(private val context: Context) {
             }
             if (intent.action == VENDOR_PREFIX + "ACTION_EVENT_NOTIFICATION_CHANGED") {
                 val event = intent.getByteExtra(VENDOR_EXTRA + "EVENTID", 0).toInt()
+                val param = intent.getLongExtra(VENDOR_EXTRA + "PARAM", 0L)
+                if (event == 1) {
+                    // تغيّرت حالة التشغيل
+                    setStatus(param.toInt())
+                    seen = true
+                    onChange?.invoke()
+                    return
+                }
+                if (event == 2) {
+                    // تغيّرت الأغنية: نصفّر لين يوصل الاسم الجديد
+                    positionMs = 0L
+                    durationMs = 0L
+                    seen = true
+                    onChange?.invoke()
+                    return
+                }
                 if (event == 5) {
                     // موضع التشغيل: تجي كل ثانية، فما نسجلها عشان ما تغرق السجل
                     positionMs = intent.getLongExtra(VENDOR_EXTRA + "PARAM", 0L)
@@ -111,6 +174,21 @@ class BtRemote private constructor(private val context: Context) {
                     onChange?.invoke()
                     return
                 }
+            }
+            if (intent.action == VENDOR_PREFIX + "GET_ELEMENT_ATTRIBUTES") {
+                readAttributes(intent)
+                seen = true
+                onChange?.invoke()
+                return
+            }
+            if (intent.action == VENDOR_PREFIX + "GET_PLAYER_STATUS") {
+                durationMs = ((extra(intent, "SONG_LENGTH") as? Number)?.toLong() ?: 0L)
+                val pos = (extra(intent, "SONG_POSITION") as? Number)?.toLong() ?: -1L
+                if (pos >= 0) positionMs = pos
+                setStatus((extra(intent, "PLAY_STATUS") as? Number)?.toInt() ?: -1)
+                seen = true
+                onChange?.invoke()
+                return
             }
             val sb = StringBuilder("RX ").append(intent.action?.substringAfterLast('.'))
             try {

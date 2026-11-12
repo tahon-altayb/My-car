@@ -151,11 +151,29 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     private fun renderBluetooth() {
         if (controller != null || !bt.seen) return
         val playing = bt.playing
-        nowPlaying = if (playing) "موسيقى البلوتوث" else ""
-        titleView.text = "موسيقى البلوتوث"
-        artistView.text = if (playing) "يشتغل من الجوال" else "متوقف"
+        val hasTitle = bt.title.isNotEmpty()
+        nowPlaying = if (hasTitle) bt.title else if (playing) "موسيقى البلوتوث" else ""
+        titleView.text = if (hasTitle) bt.title else "موسيقى البلوتوث"
+        artistView.text = when {
+            hasTitle && bt.artist.isNotEmpty() -> bt.artist
+            playing -> "يشتغل من الجوال"
+            else -> "متوقف"
+        }
         playButton.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+
+        // الشريط يمشي مع الأغنية. السحب مقفول لأن البلوتوث ما يدعم القفز لوقت محدد
+        seek.isEnabled = false
+        val length = bt.durationMs
+        if (length > 0) {
+            seek.max = (length / 1000L).toInt()
+            seek.progress = (bt.positionMs.coerceIn(0L, length) / 1000L).toInt()
+            totalView.text = formatTime(length)
+        } else {
+            seek.progress = 0
+            totalView.text = ""
+        }
         elapsedView.text = if (bt.positionMs > 0) formatTime(bt.positionMs) else ""
+
         // رسالة الموضع تجي كل ثانية؛ لو وقفت نعرف إنه توقف
         handler.removeCallbacks(btRecheck)
         if (playing) handler.postDelayed(btRecheck, 2800L)
