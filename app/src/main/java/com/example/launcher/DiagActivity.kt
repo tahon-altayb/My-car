@@ -8,6 +8,7 @@ import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -55,9 +56,14 @@ class DiagActivity : Activity() {
         closeButton.text = "إغلاق"
         closeButton.setOnClickListener { finish() }
 
+        val exportButton = Button(this)
+        exportButton.text = "نسخ برامج المصنع"
+        exportButton.setOnClickListener { exportApks() }
+
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.addView(closeButton)
+        bar.addView(exportButton)
         bar.addView(saveButton)
         bar.addView(adbButton)
 
@@ -171,6 +177,100 @@ class DiagActivity : Activity() {
                 output.text = text
             }
         }.start()
+    }
+
+    // ---------- نسخ برامج المصنع ----------
+
+    private val vendorPackages = listOf(
+        "com.xyauto.Settings",
+        "com.autochips.bluetooth",
+        "com.autochips.android.backcar",
+        "com.acloud.stub.localmusic",
+        "com.xygala.canbus",
+        "com.pve.apsbridge"
+    )
+
+    /** كل الأماكن اللي نقدر نكتب فيها: الفلاشة أولاً، ثم مجلد التنزيلات. */
+    private fun exportTargets(): List<File> {
+        val targets = ArrayList<File>()
+        try {
+            // المجلدات الخاصة بالتطبيق على الفلاشة ما تحتاج صلاحية
+            val dirs = getExternalFilesDirs(null)
+            for (i in 1 until dirs.size) {
+                val d = dirs[i] ?: continue
+                targets.add(File(d, "radio-apks"))
+            }
+        } catch (e: Exception) {
+        }
+        if (Build.VERSION.SDK_INT < 23 ||
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            targets.add(
+                File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "radio-apks"
+                )
+            )
+        }
+        return targets
+    }
+
+    private fun exportApks() {
+        if (Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 7)
+        }
+        output.text = "جاري النسخ... انتظر"
+        Thread {
+            val log = StringBuilder("== EXPORT ==\n")
+            val targets = exportTargets()
+            if (targets.isEmpty()) {
+                log.append("ما لقيت مكان للحفظ. ركّب الفلاشة واضغط مرة ثانية.\n")
+            }
+            for (pkg in vendorPackages) {
+                try {
+                    val info = packageManager.getApplicationInfo(pkg, 0)
+                    val apk = File(info.sourceDir)
+                    val appDir = apk.parentFile
+                    log.append(pkg).append(" <- ").append(info.sourceDir).append('\n')
+                    for (target in targets) {
+                        val dest = File(target, pkg)
+                        val copied = copyTree(appDir!!, dest, 0)
+                        log.append("   ").append(dest.absolutePath)
+                            .append("  (").append(copied).append(" ملف)\n")
+                    }
+                } catch (e: Exception) {
+                    log.append(pkg).append(": ").append(e.javaClass.simpleName)
+                        .append(' ').append(e.message).append('\n')
+                }
+            }
+            val text = log.toString() + "\n" + report
+            handler.post {
+                report = text
+                output.text = text
+            }
+        }.start()
+    }
+
+    /** ينسخ مجلد البرنامج كامل (الـapk ومجلد oat إن وجد). */
+    private fun copyTree(src: File, dest: File, depth: Int): Int {
+        if (depth > 4) return 0
+        if (src.isDirectory) {
+            dest.mkdirs()
+            var count = 0
+            for (child in src.listFiles() ?: emptyArray()) {
+                count += copyTree(child, File(dest, child.name), depth + 1)
+            }
+            return count
+        }
+        if (!src.canRead()) return 0
+        src.inputStream().use { input ->
+            dest.outputStream().use { out -> input.copyTo(out) }
+        }
+        return 1
     }
 
     private fun save() {
