@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B1220">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/dateText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#94A3B8"
+            android:textSize="17sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <!-- العمود الأيسر: الساعة والسرعة -->
+            <LinearLayout
+                android:layout_width="250dp"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/clockText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#E5EDF7"
+                    android:textSize="64sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginTop="16dp"
+                    android:background="#111B2E"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="السرعة"
+                        android:textColor="#94A3B8"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/speedText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="٠"
+                        android:textColor="#38BDF8"
+                        android:textSize="88sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="كم/س"
+                        android:textColor="#94A3B8"
+                        android:textSize="17sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- العمود الأيمن: النوافذ الحية والتطبيقات -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="20dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="230dp"
+                    android:orientation="horizontal">
+
+                    <!-- نافذة الكاميرا الحية -->
+                    <FrameLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="#050A14">
+
+                        <TextureView
+                            android:id="@+id/cameraTexture"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <TextView
+                            android:id="@+id/cameraStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="بث الكاميرا الخلفية"
+                            android:textColor="#334155"
+                            android:textSize="18sp" />
+                    </FrameLayout>
+
+                    <!-- نافذة الموسيقى الحية -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="16dp"
+                        android:layout_weight="1"
+                        android:background="#111B2E"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="الموسيقى"
+                            android:textColor="#94A3B8"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/musicTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:singleLine="true"
+                            android:text="لا يوجد تشغيل"
+                            android:textColor="#E5EDF7"
+                            android:textSize="22sp" />
+
+                        <TextView
+                            android:id="@+id/musicArtist"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:text="اختر أغنية للبدء"
+                            android:textColor="#64748B"
+                            android:textSize="15sp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/musicPrev"
+                                android:layout_width="56dp"
+                                android:layout_height="56dp"
+                                android:background="#1B2740"
+                                android:text="‹"
+                                android:textColor="#E5EDF7" />
+
+                            <Button
+                                android:id="@+id/musicPlay"
+                                android:layout_width="56dp"
+                                android:layout_height="56dp"
+                                android:layout_marginStart="12dp"
+                                android:layout_marginEnd="12dp"
+                                android:background="#38BDF8"
+                                android:text="▶"
+                                android:textColor="#0B1220" />
+
+                            <Button
+                                android:id="@+id/musicNext"
+                                android:layout_width="56dp"
+                                android:layout_height="56dp"
+                                android:background="#1B2740"
+                                android:text="›"
+                                android:textColor="#E5EDF7" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- شبكة التطبيقات: الخرائط (ثابتة) + 3 مربعات يختارها المستخدم -->
+                <GridLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_weight="1"
+                    android:columnCount="4"
+                    android:rowCount="1"
+                    android:useDefaultMargins="false">
+
+                    <Button
+                        android:id="@+id/mapsTile"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="8dp"
+                        android:background="#111B2E"
+                        android:text="الخرائط"
+                        android:textColor="#E5EDF7"
+                        android:textSize="20sp" />
+
+                    <Button
+                        android:id="@+id/slot1"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="8dp"
+                        android:background="#111B2E"
+                        android:textColor="#E5EDF7"
+                        android:textSize="18sp" />
+
+                    <Button
+                        android:id="@+id/slot2"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="8dp"
+                        android:background="#111B2E"
+                        android:textColor="#E5EDF7"
+                        android:textSize="18sp" />
+
+                    <Button
+                        android:id="@+id/slot3"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_columnWeight="1"
+                        android:layout_margin="8dp"
+                        android:background="#111B2E"
+                        android:textColor="#E5EDF7"
+                        android:textSize="18sp" />
+                </GridLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- تلميح السحب للأعلى -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="اسحب للأعلى لعرض كل التطبيقات"
+            android:textColor="#64748B"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- شاشة الانتظار: تظهر بعد فترة بدون استخدام -->
+    <FrameLayout
+        android:id="@+id/idleOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/idleClock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textColor="#475569"
+            android:textSize="96sp" />
+
+        <TextView
+            android:id="@+id/idleNowPlaying"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="28dp"
+            android:gravity="center"
+            android:textColor="#334155"
+            android:textSize="16sp" />
+    </FrameLayout>
+</FrameLayout>
