@@ -16,11 +16,11 @@ import java.io.File
 class PhotoTile(
     private val handler: Handler,
     private val image: ImageView,
-    private val hint: TextView
+    private val hint: TextView,
+    private val intervalMs: Long
 ) {
     companion object {
         const val FOLDER = "LauncherPhotos"
-        private const val INTERVAL_MS = 7000L
         private const val TARGET_WIDTH = 640
     }
 
@@ -54,17 +54,18 @@ class PhotoTile(
                 File("/storage").listFiles()?.let { roots.addAll(it) }
             } catch (_: Throwable) {
             }
+            // ندوّر على أي مجلد اسمه LauncherPhotos، حتى لو داخل Pictures أو DCIM أو غيرها
             for (root in roots) {
-                try {
-                    val dir = File(root, FOLDER)
-                    val list = dir.listFiles() ?: continue
-                    for (f in list) {
-                        val name = f.name.lowercase()
-                        if (f.isFile && (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                                name.endsWith(".png") || name.endsWith(".webp"))
-                        ) found.add(f)
+                for (dir in findFolders(root, 0)) {
+                    try {
+                        for (f in dir.listFiles() ?: emptyArray()) {
+                            val name = f.name.lowercase()
+                            if (f.isFile && (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
+                                    name.endsWith(".png") || name.endsWith(".webp"))
+                            ) found.add(f)
+                        }
+                    } catch (_: Throwable) {
                     }
-                } catch (_: Throwable) {
                 }
             }
             val sorted = found.distinctBy { it.absolutePath }.sortedBy { it.name }
@@ -77,9 +78,33 @@ class PhotoTile(
                 } else if (changed || index < 0) {
                     index = -1
                     next()
+                } else if (running && files.size > 1) {
+                    // رجعنا للواجهة والصور نفسها: نكمل التنقل من مكاننا
+                    handler.removeCallbacks(advance)
+                    handler.postDelayed(advance, intervalMs)
                 }
             }
         }.start()
+    }
+
+    private fun findFolders(dir: File, depth: Int): List<File> {
+        val result = ArrayList<File>()
+        if (depth > 3) return result
+        val children = try {
+            dir.listFiles()
+        } catch (e: Throwable) {
+            null
+        } ?: return result
+        for (child in children) {
+            if (!child.isDirectory) continue
+            val name = child.name
+            if (name.equals(FOLDER, ignoreCase = true)) {
+                result.add(child)
+            } else if (!name.startsWith(".") && name != "Android" && name != "emulated" || depth == 0) {
+                result.addAll(findFolders(child, depth + 1))
+            }
+        }
+        return result
     }
 
     /** الصورة التالية (تستدعى تلقائياً أو بضغطة). */
@@ -104,7 +129,7 @@ class PhotoTile(
                     image.setImageBitmap(bitmap)
                     image.animate().alpha(1f).setDuration(350L).start()
                 }
-                if (running && files.size > 1) handler.postDelayed(advance, INTERVAL_MS)
+                if (running && files.size > 1) handler.postDelayed(advance, intervalMs)
             }
         }.start()
     }

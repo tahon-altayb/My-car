@@ -39,6 +39,7 @@ class BtRemote private constructor(private val context: Context) {
         private const val A2DP_PLAYING_CHANGED =
             "android.bluetooth.a2dp-sink.profile.action.PLAYING_STATE_CHANGED"
         private const val VENDOR_PREFIX = "com.autochips.bluetooth.avrcpct.profile.action."
+        private const val VENDOR_INTERFACE = "com.autochips.bluetooth.IBluetoothAvrcpCt"
         private const val VENDOR_EXTRA = "com.autochips.bluetooth.avrcpct.profile.extra."
         private val VENDOR_ACTIONS = listOf(
             "ACTION_EVENT_NOTIFICATION_CHANGED", "GET_CAPABILITY_CNF", "GET_ELEMENT_ATTRIBUTES",
@@ -106,6 +107,86 @@ class BtRemote private constructor(private val context: Context) {
         }
     }
 
+    // ---------- خدمة AVRCP حقت المصنع: نطلب منها مدة الأغنية واسمها ----------
+
+    private var vendorService: android.os.IBinder? = null
+    private var vendorBound = false
+    private var lastRequest = 0L
+
+    private val vendorConnection = object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
+            vendorService = binder
+            note("vendor avrcp service connected: " + name?.flattenToShortString())
+            requestInfo(true)
+        }
+
+        override fun onServiceDisconnected(name: android.content.ComponentName?) {
+            vendorService = null
+        }
+    }
+
+    private fun bindVendor() {
+        if (vendorBound) return
+        val actions = listOf(
+            VENDOR_INTERFACE,
+            "android.bluetooth.IBluetoothAvrcpCt",
+            "com.autochips.bluetooth.avrcpct.IBluetoothAvrcpCt"
+        )
+        for (action in actions) {
+            try {
+                val found = context.packageManager.queryIntentServices(Intent(action), 0)
+                if (found == null || found.isEmpty()) {
+                    note("no service for $action")
+                    continue
+                }
+                val info = found[0].serviceInfo
+                val intent = Intent(action)
+                intent.setClassName(info.packageName, info.name)
+                val ok = context.bindService(intent, vendorConnection, Context.BIND_AUTO_CREATE)
+                note("bind " + info.packageName + "/" + info.name + " = " + ok)
+                if (ok) {
+                    vendorBound = true
+                    return
+                }
+            } catch (e: Throwable) {
+                note("bind failed $action: $e")
+            }
+        }
+    }
+
+    /** يطلب من الجوال حالة التشغيل (فيها مدة الأغنية) واسم الأغنية. الرد يجي كرسائل. */
+    fun requestInfo(force: Boolean) {
+        val binder = vendorService ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && now - lastRequest < 4000L) return
+        lastRequest = now
+        try {
+            val data = android.os.Parcel.obtain()
+            val reply = android.os.Parcel.obtain()
+            try {
+                data.writeInterfaceToken(VENDOR_INTERFACE)
+                binder.transact(5, data, reply, 0)   // getPlayStatus
+            } finally {
+                data.recycle()
+                reply.recycle()
+            }
+            val data2 = android.os.Parcel.obtain()
+            val reply2 = android.os.Parcel.obtain()
+            try {
+                data2.writeInterfaceToken(VENDOR_INTERFACE)
+                data2.writeLong(0L)
+                data2.writeByte(4.toByte())
+                data2.writeIntArray(intArrayOf(1, 2, 3, 7))   // عنوان، فنان، ألبوم، المدة
+                binder.transact(4, data2, reply2, 0)   // getElementAttributes
+            } finally {
+                data2.recycle()
+                reply2.recycle()
+            }
+        } catch (e: Throwable) {
+            note("requestInfo failed: $e")
+        }
+    }
+
     /** اسم الأغنية والفنان: القيم مرقمة VALUE_0.. ومعرفاتها ATTRIBUTE_ID_0.. (1 عنوان، 2 فنان). */
     private fun readAttributes(intent: Intent) {
         val count = (extra(intent, ".COUNT") as? Number)?.toInt() ?: 0
@@ -116,6 +197,10 @@ class BtRemote private constructor(private val context: Context) {
             val value = extra(intent, "VALUE_$i") as? String ?: continue
             if (id == 1) newTitle = value
             if (id == 2) newArtist = value
+            if (id == 7) {
+                val length = value.trim().toLongOrNull() ?: 0L
+                if (length > 0L) durationMs = length
+            }
         }
         if (newTitle.isNotEmpty()) {
             title = newTitle
@@ -163,12 +248,17 @@ class BtRemote private constructor(private val context: Context) {
                     positionMs = 0L
                     durationMs = 0L
                     seen = true
+                    requestInfo(true)
                     onChange?.invoke()
                     return
                 }
                 if (event == 5) {
                     // موضع التشغيل: تجي كل ثانية، فما نسجلها عشان ما تغرق السجل
-                    positionMs = intent.getLongExtra(VENDOR_EXTRA + "PARAM", 0L)
+                    positionMs = param
+                    // لو ما نعرف المدة أو الاسم لسه، نطلبهم (مو أكثر من مرة كل 4 ثواني)
+                    if (durationMs <= 0L || title.isEmpty()) requestInfo(false)
+                    // الموضع تجاوز المدة: أغنية جديدة والمدة القديمة ما عادت صحيحة
+                    if (durationMs > 0L && param > durationMs + 3000L) durationMs = 0L
                     lastPositionEvent = android.os.SystemClock.elapsedRealtime()
                     seen = true
                     onChange?.invoke()
@@ -214,6 +304,7 @@ class BtRemote private constructor(private val context: Context) {
     }
 
     private fun start() {
+        bindVendor()
         try {
             val filter = IntentFilter(A2DP_PLAYING_CHANGED)
             for (a in VENDOR_ACTIONS) filter.addAction(VENDOR_PREFIX + a)

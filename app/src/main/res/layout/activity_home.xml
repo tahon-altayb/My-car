@@ -56,7 +56,7 @@
                 android:background="@drawable/bg_tile"
                 android:minWidth="100dp"
                 android:stateListAnimator="@null"
-                android:text="الخلفية"
+                android:text="الإعدادات"
                 android:textColor="?attr/lText"
                 android:textSize="18sp" />
 
@@ -103,6 +103,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/mainRow"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginTop="12dp"
@@ -111,6 +112,7 @@
 
             <!-- اليسار: الساعة والسرعة -->
             <LinearLayout
+                android:id="@+id/leftColumn"
                 android:layout_width="210dp"
                 android:layout_height="match_parent"
                 android:orientation="vertical">
@@ -126,6 +128,7 @@
                     android:textStyle="bold" />
 
                 <LinearLayout
+                    android:id="@+id/speedCard"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_marginTop="10dp"
@@ -162,6 +165,7 @@
 
             <!-- الوسط: الكاميرا والموسيقى ثم التطبيقات -->
             <LinearLayout
+                android:id="@+id/centerColumn"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_marginLeft="16dp"
@@ -169,6 +173,7 @@
                 android:orientation="vertical">
 
                 <LinearLayout
+                    android:id="@+id/topRow"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="3"
@@ -176,6 +181,7 @@
 
                     <!-- الطقس ومواقيت الصلاة -->
                     <LinearLayout
+                        android:id="@+id/weatherCard"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
@@ -235,6 +241,7 @@
 
                     <!-- الموسيقى -->
                     <LinearLayout
+                        android:id="@+id/musicCard"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginLeft="16dp"
@@ -384,6 +391,7 @@
 
                 <!-- التطبيقات: الخرائط + 3 مربعات يختارها المستخدم -->
                 <LinearLayout
+                    android:id="@+id/appsRow"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_marginTop="14dp"
@@ -570,36 +578,43 @@
         android:background="#000000"
         android:visibility="gone">
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
 
+            <!-- الساعة في منتصف الشاشة تماماً -->
             <TextView
                 android:id="@+id/idleClock"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#94A3B8"
-                android:textSize="96sp" />
+                android:layout_centerInParent="true"
+                android:singleLine="true"
+                android:textColor="#CBD5E1"
+                android:textSize="104sp" />
 
             <TextView
                 android:id="@+id/idlePrayer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#64748B"
-                android:textSize="24sp" />
-        </LinearLayout>
+                android:layout_below="@id/idleClock"
+                android:layout_centerHorizontal="true"
+                android:layout_marginTop="22dp"
+                android:textColor="#94A3B8"
+                android:textSize="26sp" />
 
-        <TextView
-            android:id="@+id/idleNowPlaying"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="28dp"
-            android:gravity="center"
-            android:textColor="#475569"
-            android:textSize="16sp" />
+            <TextView
+                android:id="@+id/idleNowPlaying"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_marginBottom="30dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:paddingLeft="24dp"
+                android:paddingRight="24dp"
+                android:singleLine="true"
+                android:textColor="#94A3B8"
+                android:textSize="24sp" />
+        </RelativeLayout>
     </FrameLayout>
 </FrameLayout>

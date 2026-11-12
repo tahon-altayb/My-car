@@ -42,6 +42,26 @@ class AppStore(context: Context) {
         prefs.edit().putString("theme_mode", mode).apply()
     }
 
+    fun str(key: String, default: String): String = prefs.getString(key, default) ?: default
+
+    /** يحفظ إعداد ويزيد رقم النسخة، عشان الواجهة تعرف إنها تحتاج تعيد الرسم. */
+    fun setStr(key: String, value: String) {
+        prefs.edit().putString(key, value).putInt("rev", rev() + 1).apply()
+    }
+
+    /** يحفظ بدون ما يطلب إعادة رسم الواجهة. */
+    fun setQuiet(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
+    }
+
+    fun rev(): Int = prefs.getInt("rev", 0)
+
+    fun lastDay(): Boolean = prefs.getBoolean("last_day", false)
+
+    fun setLastDay(day: Boolean) {
+        prefs.edit().putBoolean("last_day", day).apply()
+    }
+
     /** سطوع اللانشر من 1 إلى 10. */
     fun brightness(): Int = prefs.getInt("brightness", 10)
 

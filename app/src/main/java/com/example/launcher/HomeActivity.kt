@@ -40,7 +40,6 @@ import java.util.Locale
 class HomeActivity : Activity() {
 
     companion object {
-        private const val IDLE_TIMEOUT_MS = 120_000L       // دقيقتين بدون لمس
         private const val SWIPE_TRIGGER_PX = 50f           // مسافة السحب للأعلى اللي تفتح الدرج
         private const val TICK_MS = 15_000L
         private const val WEATHER_MAX_AGE_MS = 30 * 60_000L
@@ -90,6 +89,7 @@ class HomeActivity : Activity() {
     private var pickerSlot: String? = null
 
     private var appliedDay = false
+    private var appliedRev = 0
     private var nextPrayerLabel = ""
     private var weatherLoading = false
     private var lastWeatherAttempt = 0L
@@ -153,9 +153,12 @@ class HomeActivity : Activity() {
         store = AppStore(this)
         TimeSource.offsetMs = store.clockOffset()
         appliedDay = isDayNow()
-        setTheme(if (appliedDay) R.style.LauncherDay else R.style.LauncherNight)
+        store.setLastDay(appliedDay)
+        appliedRev = store.rev()
+        ThemeHelper.apply(this, store, appliedDay)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
+        ThemeHelper.tintBars(this)
 
         audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
@@ -180,9 +183,13 @@ class HomeActivity : Activity() {
 
         music = MusicTile(this, handler)
 
-        photos = PhotoTile(handler, findViewById(R.id.photoImage), findViewById(R.id.photoHint))
+        photos = PhotoTile(
+            handler, findViewById(R.id.photoImage), findViewById(R.id.photoHint),
+            (store.str("photo_sec", "7").toLongOrNull() ?: 7L) * 1000L
+        )
         findViewById<View>(R.id.photoTile).setOnClickListener { photos.next() }
 
+        applyLayoutPrefs()
         setupThemeToggle()
         setupBrightness()
         setupWallpaper()
@@ -193,7 +200,7 @@ class HomeActivity : Activity() {
 
         idle = IdleController(
             handler,
-            IDLE_TIMEOUT_MS,
+            idleTimeoutMs(),
             onIdle = {
                 refreshTimeViews()
                 idleOverlay.visibility = View.VISIBLE
@@ -238,6 +245,72 @@ class HomeActivity : Activity() {
         }
     }
 
+    // ---------- إعدادات المستخدم ----------
+
+    private fun idleTimeoutMs(): Long {
+        val seconds = store.str("idle_sec", "120").toLongOrNull() ?: 120L
+        // صفر = لا تظهر شاشة الانتظار
+        return if (seconds <= 0L) 365L * 24 * 3600 * 1000 else seconds * 1000L
+    }
+
+    /** يرتب الأعمدة والمربعات حسب الإعدادات، ويضبط المسافات بينها. */
+    private fun reorder(parent: LinearLayout, order: List<View>, gapDp: Int) {
+        parent.removeAllViews()
+        val gap = (gapDp * resources.displayMetrics.density).toInt()
+        var first = true
+        for (view in order) {
+            val params = view.layoutParams as LinearLayout.LayoutParams
+            params.leftMargin = if (first || view.visibility == View.GONE) 0 else gap
+            params.rightMargin = 0
+            parent.addView(view, params)
+            if (view.visibility != View.GONE) first = false
+        }
+    }
+
+    private fun applyLayoutPrefs() {
+        val left = findViewById<View>(R.id.leftColumn)
+        val center = findViewById<View>(R.id.centerColumn)
+        val weather = findViewById<View>(R.id.weatherCard)
+        val musicCard = findViewById<View>(R.id.musicCard)
+        val photo = findViewById<View>(R.id.photoTile)
+        val maps = findViewById<View>(R.id.mapsTile)
+        val slot = findViewById<View>(R.id.slot1)
+
+        findViewById<View>(R.id.speedCard).visibility =
+            if (store.str("show_speed", "1") == "1") View.VISIBLE else View.INVISIBLE
+        photo.visibility = if (store.str("show_photo", "1") == "1") View.VISIBLE else View.GONE
+        volumeColumn.visibility = if (store.str("show_volume", "1") == "1") View.VISIBLE else View.GONE
+
+        val mirror = store.str("mirror", "0") == "1"
+        reorder(
+            findViewById(R.id.mainRow),
+            if (mirror) listOf(volumeColumn, center, left) else listOf(left, center, volumeColumn), 16
+        )
+        reorder(
+            findViewById(R.id.topRow),
+            if (store.str("swap_top", "0") == "1") listOf(musicCard, weather) else listOf(weather, musicCard), 16
+        )
+        reorder(
+            findViewById(R.id.appsRow),
+            if (store.str("swap_apps", "0") == "1") listOf(photo, maps, slot) else listOf(maps, slot, photo), 12
+        )
+        findViewById<GridView>(R.id.drawerGrid).numColumns =
+            store.str("drawer_cols", "6").toIntOrNull() ?: 6
+    }
+
+    /** طلب من صفحة الإعدادات: اختيار خلفية أو إزالتها. */
+    private fun handlePendingWallpaper() {
+        val pending = store.str("pending_wallpaper", "")
+        if (pending.isEmpty()) return
+        store.setQuiet("pending_wallpaper", "")
+        if (pending == "pick") {
+            pickWallpaper()
+        } else {
+            wallpaperFile().delete()
+            loadWallpaper()
+        }
+    }
+
     // ---------- السطوع ----------
 
     private fun setupBrightness() {
@@ -271,17 +344,7 @@ class HomeActivity : Activity() {
 
     private fun setupWallpaper() {
         findViewById<Button>(R.id.wallpaperButton).setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("الخلفية")
-                .setItems(arrayOf("اختيار صورة", "إزالة الخلفية")) { _, which ->
-                    if (which == 0) {
-                        pickWallpaper()
-                    } else {
-                        wallpaperFile().delete()
-                        loadWallpaper()
-                    }
-                }
-                .show()
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
         loadWallpaper()
     }
@@ -417,6 +480,7 @@ class HomeActivity : Activity() {
 
     /** الساعة بنظام 12 ساعة، وجنبها ص أو م بخط أصغر. */
     private fun clockWithPeriod(): CharSequence {
+        if (store.str("clock24", "0") == "1") return TimeSource.format("HH:mm")
         val text = TimeSource.format("h:mm a")
         val space = text.indexOf(' ')
         if (space < 0) return text
@@ -683,6 +747,12 @@ class HomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        handlePendingWallpaper()
+        if (store.rev() != appliedRev) {
+            // تغيّرت الإعدادات: نعيد رسم الواجهة
+            recreate()
+            return
+        }
         music.start()
         refreshVolume()
         val volumeFilter = IntentFilter(VOLUME_CHANGED)
@@ -839,7 +909,8 @@ class HomeActivity : Activity() {
                 downY = ev.y
                 val location = IntArray(2)
                 volumeColumn.getLocationOnScreen(location)
-                val onVolume = ev.rawX >= location[0]
+                val onVolume = volumeColumn.visibility == View.VISIBLE &&
+                    ev.rawX >= location[0] && ev.rawX <= location[0] + volumeColumn.width
                 swipeArmed = !wasIdle && !isDrawerOpen() && !onVolume &&
                     ev.y > root.height * 0.72f
             }
