@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="night_bg">#0B1220</color>
+    <color name="day_bg">#F1F5F9</color>
+
+    <!-- الوضع الليلي -->
+    <style name="LauncherNight" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/night_bg</item>
+        <item name="android:statusBarColor">@color/night_bg</item>
+        <item name="android:navigationBarColor">@color/night_bg</item>
+        <item name="android:colorAccent">#38BDF8</item>
+        <item name="lBg">#0B1220</item>
+        <item name="lCard">#111B2E</item>
+        <item name="lCardAlt">#24324F</item>
+        <item name="lText">#E5EDF7</item>
+        <item name="lTextDim">#94A3B8</item>
+        <item name="lAccent">#38BDF8</item>
+        <item name="lOnAccent">#0B1220</item>
+        <item name="lStroke">#334155</item>
+    </style>
+
+    <!-- الوضع النهاري: خلفية فاتحة ونص غامق عشان يبان في الشمس -->
+    <style name="LauncherDay" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/day_bg</item>
+        <item name="android:statusBarColor">@color/day_bg</item>
+        <item name="android:navigationBarColor">@color/day_bg</item>
+        <item name="android:colorAccent">#0369A1</item>
+        <item name="lBg">#F1F5F9</item>
+        <item name="lCard">#FFFFFF</item>
+        <item name="lCardAlt">#CBD5E1</item>
+        <item name="lText">#0F172A</item>
+        <item name="lTextDim">#334155</item>
+        <item name="lAccent">#0369A1</item>
+        <item name="lOnAccent">#FFFFFF</item>
+        <item name="lStroke">#94A3B8</item>
+    </style>
+</resources>

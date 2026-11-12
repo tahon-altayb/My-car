@@ -3,8 +3,8 @@ package com.example.launcher
 import android.content.Context
 
 /**
- * يحفظ أي تطبيق اختاره المستخدم لكل مربع.
- * null = المربع فاضي ويعرض "+ اختر تطبيق".
+ * يحفظ اختيارات المستخدم: التطبيق في كل مربع، والوضع النهاري أو الليلي.
+ * null في المربع = فاضي ويعرض "+ اختر تطبيق".
  */
 class AppStore(context: Context) {
 
@@ -15,6 +15,7 @@ class AppStore(context: Context) {
         const val SLOT_3 = "slot3"
 
         private const val PREFS = "launcher_prefs"
+        private const val KEY_DAY = "day_mode"
         private const val DEFAULT_MAPS = "com.google.android.apps.maps"
     }
 
@@ -26,5 +27,11 @@ class AppStore(context: Context) {
 
     fun set(key: String, packageName: String?) {
         prefs.edit().putString(key, packageName).apply()
+    }
+
+    fun isDay(): Boolean = prefs.getBoolean(KEY_DAY, false)
+
+    fun setDay(day: Boolean) {
+        prefs.edit().putBoolean(KEY_DAY, day).apply()
     }
 }

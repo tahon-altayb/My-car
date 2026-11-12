@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="lBg" format="color" />
+    <attr name="lCard" format="color" />
+    <attr name="lCardAlt" format="color" />
+    <attr name="lText" format="color" />
+    <attr name="lTextDim" format="color" />
+    <attr name="lAccent" format="color" />
+    <attr name="lOnAccent" format="color" />
+    <attr name="lStroke" format="color" />
+</resources>

@@ -1,33 +1,65 @@
 package com.example.launcher
 
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.Handler
+import android.os.SystemClock
+import android.provider.Settings
+import android.view.KeyEvent
+import android.view.View
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
+import java.util.Locale
 
 /**
- * يقرأ الموسيقى الشغالة حالياً من أي تطبيق (Spotify, YouTube Music...)
- * ويعرض العنوان والفنان، ويرسل أوامر التشغيل والتالي والسابق.
+ * مربع الموسيقى: صورة الألبوم، العنوان، شريط التقديم والترجيع، وأزرار التحكم.
  *
- * يحتاج المستخدم يفعّل صلاحية "الوصول للإشعارات" للتطبيق مرة وحدة.
+ * - الأزرار (تشغيل/التالي/السابق) تشتغل دائماً، لأنها ترسل أزرار الوسائط للنظام.
+ * - اسم الأغنية والصورة وشريط التقديم تحتاج صلاحية "الوصول للإشعارات"،
+ *   والضغط على المربع يفتح صفحة تفعيلها.
  */
-class MusicTile(
-    private val context: Context,
-    private val titleView: TextView,
-    private val artistView: TextView
-) {
+class MusicTile(private val activity: Activity, private val handler: Handler) {
+
+    private val titleView: TextView = activity.findViewById(R.id.musicTitle)
+    private val artistView: TextView = activity.findViewById(R.id.musicArtist)
+    private val artView: ImageView = activity.findViewById(R.id.musicArt)
+    private val seek: SeekBar = activity.findViewById(R.id.musicSeek)
+    private val elapsedView: TextView = activity.findViewById(R.id.musicElapsed)
+    private val totalView: TextView = activity.findViewById(R.id.musicTotal)
+    private val playButton: ImageButton = activity.findViewById(R.id.musicPlay)
+
     private val sessionManager =
-        context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
-    private val listenerComponent = ComponentName(context, NowPlayingService::class.java)
+        activity.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+    private val audio = activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val listenerComponent = ComponentName(activity, NowPlayingService::class.java)
 
     private var controller: MediaController? = null
+    private var listening = false
+    private var userSeeking = false
+    private var durationMs = 0L
+
+    /** النص اللي يظهر في شاشة الانتظار. فاضي إذا ما فيه أغنية معروفة. */
+    var nowPlaying: String = ""
+        private set
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) {
-            render(metadata)
+            renderMetadata(metadata)
+        }
+
+        override fun onPlaybackStateChanged(state: PlaybackState?) {
+            renderState(state)
         }
     }
 
@@ -35,51 +67,184 @@ class MusicTile(
         bind(list)
     }
 
-    fun start() {
-        try {
-            sessionManager.addOnActiveSessionsChangedListener(sessionsListener, listenerComponent)
-            bind(sessionManager.getActiveSessions(listenerComponent))
-        } catch (e: SecurityException) {
-            titleView.text = "فعّل صلاحية الإشعارات للتطبيق"
-            artistView.text = ""
+    private val tick = object : Runnable {
+        override fun run() {
+            renderPosition()
+            handler.postDelayed(this, 1000L)
         }
     }
 
-    fun stop() {
+    init {
+        activity.findViewById<ImageButton>(R.id.musicPrev).setOnClickListener {
+            controller?.transportControls?.skipToPrevious()
+                ?: sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+        }
+        activity.findViewById<ImageButton>(R.id.musicNext).setOnClickListener {
+            controller?.transportControls?.skipToNext()
+                ?: sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+        }
+        playButton.setOnClickListener {
+            val c = controller
+            if (c == null) {
+                sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            } else if (c.playbackState?.state == PlaybackState.STATE_PLAYING) {
+                c.transportControls.pause()
+            } else {
+                c.transportControls.play()
+            }
+        }
+        activity.findViewById<View>(R.id.musicInfo).setOnClickListener {
+            if (!hasAccess()) openAccessSettings()
+        }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) elapsedView.text = formatTime(progress * 1000L)
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                userSeeking = true
+            }
+
+            override fun onStopTrackingTouch(bar: SeekBar) {
+                userSeeking = false
+                controller?.transportControls?.seekTo(bar.progress * 1000L)
+            }
+        })
+    }
+
+    fun start() {
+        if (!hasAccess()) {
+            showNoAccess()
+            return
+        }
         try {
-            sessionManager.removeOnActiveSessionsChangedListener(sessionsListener)
-        } catch (_: Exception) {
+            sessionManager.addOnActiveSessionsChangedListener(sessionsListener, listenerComponent)
+            listening = true
+            bind(sessionManager.getActiveSessions(listenerComponent))
+        } catch (e: SecurityException) {
+            showNoAccess()
+        }
+        handler.removeCallbacks(tick)
+        handler.post(tick)
+    }
+
+    fun stop() {
+        handler.removeCallbacks(tick)
+        if (listening) {
+            try {
+                sessionManager.removeOnActiveSessionsChangedListener(sessionsListener)
+            } catch (_: Exception) {
+            }
+            listening = false
         }
         controller?.unregisterCallback(controllerCallback)
         controller = null
     }
 
-    private fun bind(list: List<MediaController>?) {
-        controller?.unregisterCallback(controllerCallback)
-        controller = list?.firstOrNull()
-        controller?.registerCallback(controllerCallback)
-        render(controller?.metadata)
+    private fun hasAccess(): Boolean {
+        val enabled = Settings.Secure.getString(
+            activity.contentResolver, "enabled_notification_listeners"
+        ) ?: return false
+        return enabled.contains(activity.packageName)
     }
 
-    private fun render(metadata: MediaMetadata?) {
-        titleView.text = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "لا يوجد تشغيل"
-        artistView.text = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "اختر أغنية للبدء"
-    }
-
-    fun playPause() {
-        val state = controller?.playbackState?.state
-        if (state == PlaybackState.STATE_PLAYING) {
-            controller?.transportControls?.pause()
-        } else {
-            controller?.transportControls?.play()
+    private fun openAccessSettings() {
+        try {
+            activity.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+        } catch (e: Exception) {
+            Toast.makeText(
+                activity,
+                "الراديو ما فيه صفحة الوصول للإشعارات. الأزرار تشتغل بدونها.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    fun next() {
-        controller?.transportControls?.skipToNext()
+    private fun showNoAccess() {
+        nowPlaying = ""
+        titleView.text = "اضغط هنا لعرض اسم الأغنية"
+        artistView.text = "أزرار التحكم تشتغل بدون تفعيل"
+        showPlaceholderArt()
+        setSeekEnabled(false)
     }
 
-    fun prev() {
-        controller?.transportControls?.skipToPrevious()
+    private fun bind(list: List<MediaController>?) {
+        controller?.unregisterCallback(controllerCallback)
+        controller = list?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: list?.firstOrNull()
+        controller?.registerCallback(controllerCallback, handler)
+        renderMetadata(controller?.metadata)
+        renderState(controller?.playbackState)
+    }
+
+    private fun renderMetadata(metadata: MediaMetadata?) {
+        val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+        val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+        nowPlaying = title ?: ""
+        titleView.text = title ?: "لا يوجد تشغيل"
+        artistView.text = artist ?: if (title == null) "شغّل أغنية من أي تطبيق" else ""
+
+        val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        if (art != null) {
+            artView.imageTintList = null
+            artView.setImageBitmap(art)
+        } else {
+            showPlaceholderArt()
+        }
+
+        durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        if (durationMs > 0) {
+            setSeekEnabled(true)
+            seek.max = (durationMs / 1000L).toInt()
+            totalView.text = formatTime(durationMs)
+        } else {
+            setSeekEnabled(false)
+        }
+        renderPosition()
+    }
+
+    private fun renderState(state: PlaybackState?) {
+        val playing = state?.state == PlaybackState.STATE_PLAYING
+        playButton.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+        renderPosition()
+    }
+
+    private fun renderPosition() {
+        if (durationMs <= 0 || userSeeking) return
+        val state = controller?.playbackState ?: return
+        var position = state.position
+        if (state.state == PlaybackState.STATE_PLAYING) {
+            val delta = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+            position += (delta * state.playbackSpeed).toLong()
+        }
+        position = position.coerceIn(0L, durationMs)
+        seek.progress = (position / 1000L).toInt()
+        elapsedView.text = formatTime(position)
+    }
+
+    private fun setSeekEnabled(enabled: Boolean) {
+        seek.isEnabled = enabled
+        if (!enabled) {
+            durationMs = 0L
+            seek.progress = 0
+            elapsedView.text = ""
+            totalView.text = ""
+        }
+    }
+
+    private fun showPlaceholderArt() {
+        artView.setImageResource(R.drawable.ic_note)
+        artView.imageTintList = ColorStateList.valueOf(activity.themeColor(R.attr.lTextDim))
+    }
+
+    private fun sendMediaKey(code: Int) {
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000L
+        return String.format(Locale("ar"), "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }
