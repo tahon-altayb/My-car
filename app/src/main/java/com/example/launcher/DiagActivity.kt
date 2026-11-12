@@ -30,6 +30,12 @@ class DiagActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var output: TextView
     private var report = ""
+    private lateinit var btTest: BtRemote
+
+    override fun onDestroy() {
+        btTest.stop()
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,14 +78,21 @@ class DiagActivity : Activity() {
         bar.addView(saveButton)
         bar.addView(adbButton)
 
-        // أزرار تجربة طرق رفع وخفض صوت السيارة
+        // أزرار تجربة التحكم بموسيقى البلوتوث بطريقتين
+        btTest = BtRemote(this)
+        btTest.start()
         val volRow = LinearLayout(this)
         volRow.orientation = LinearLayout.HORIZONTAL
-        for (method in 1..5) {
-            for (dir in intArrayOf(1, -1)) {
+        val labels = arrayOf("تشغيل/إيقاف", "التالي", "السابق")
+        for (method in 1..2) {
+            for (what in 0..2) {
                 val b = Button(this)
-                b.text = "ط" + method + (if (dir > 0) " +" else " −")
-                b.setOnClickListener { tryVolume(method, dir) }
+                b.text = "ب" + method + " " + labels[what]
+                b.setOnClickListener {
+                    val line = "BT method " + method + " " + labels[what] + ": " + btTest.test(method, what)
+                    report = line + "\n" + report
+                    output.text = report
+                }
                 volRow.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
         }
@@ -197,59 +210,6 @@ class DiagActivity : Activity() {
         }.start()
     }
 
-    // ---------- تجربة طرق الصوت ----------
-
-    private fun tryVolume(method: Int, dir: Int) {
-        Thread {
-            val audio = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            val result = try {
-                when (method) {
-                    1 -> {
-                        sendBroadcast(android.content.Intent(
-                            if (dir > 0) "xy.android.gtpkey.voladd" else "xy.android.gtpkey.voldec"))
-                        "broadcast gtpkey"
-                    }
-                    2 -> {
-                        audio.adjustStreamVolume(3, dir, 4096 or 1)
-                        "adjustStreamVolume FROM_KEY"
-                    }
-                    3 -> {
-                        audio.adjustVolume(dir, 1)
-                        "adjustVolume"
-                    }
-                    4 -> {
-                        android.app.Instrumentation().sendKeyDownUpSync(
-                            if (dir > 0) android.view.KeyEvent.KEYCODE_VOLUME_UP
-                            else android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
-                        "key event"
-                    }
-                    else -> {
-                        val cur = android.provider.Settings.System.getInt(contentResolver, "McuMainVolume", 10)
-                        val next = (cur + dir).coerceIn(0, 30)
-                        var note = "master $cur->$next"
-                        try {
-                            android.provider.Settings.System.putInt(contentResolver, "McuMainVolume", next)
-                        } catch (e: Throwable) {
-                            note += " (putInt: " + e.javaClass.simpleName + ")"
-                        }
-                        android.media.AudioManager::class.java
-                            .getMethod("setMasterVolume", Int::class.javaPrimitiveType).invoke(audio, next)
-                        sendBroadcast(android.content.Intent("xy.android.main.volume.changed"))
-                        note
-                    }
-                }
-            } catch (e: Throwable) {
-                "FAILED " + (e.cause ?: e)
-            }
-            val line = "VOL method " + method + (if (dir > 0) "+" else "-") + ": " + result +
-                "  | McuMainVolume=" + android.provider.Settings.System.getInt(contentResolver, "McuMainVolume", -1)
-            handler.post {
-                report = line + "\n" + report
-                output.text = report
-            }
-        }.start()
-    }
-
     // ---------- فحص البلوتوث والصوت ----------
 
     private fun listMethods(sb: StringBuilder, cls: Class<*>, filter: Regex?) {
@@ -280,14 +240,6 @@ class DiagActivity : Activity() {
             synchronized(BtRemote.log) { sb.append(BtRemote.log) }
             sb.append("== PROBE ==\n")
             // الصوت
-            val vol = CarVolume(this)
-            sb.append("vendor volume api: ").append(vol.usesVendor)
-                .append("  McuMainVolume=").append(vol.current()).append('\n')
-            val before = vol.current()
-            val ok = vol.set(before)
-            sb.append("set same value ok=").append(ok).append(" err=").append(vol.lastError).append('\n')
-            sb.append("(AudioManager ok)\n")
-
             // كلاسات البلوتوث في النظام
             for (name in listOf(
                 "android.bluetooth.BluetoothAvrcpController",

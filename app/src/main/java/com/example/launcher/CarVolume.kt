@@ -1,70 +1,68 @@
 package com.example.launcher
 
 import android.content.Context
-import android.media.AudioManager
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 
 /**
  * صوت السيارة الحقيقي في رواديو XY/Autochips.
- * برنامج المصنع (اعدادات السيارة) يغيّره بدالة مخفية في النظام اسمها setMasterVolume،
- * ويحفظ القيمة الحالية في إعداد اسمه McuMainVolume.
- * لو الدالة مو موجودة أو مرفوضة، نرجع لصوت الأندرويد العادي.
+ * الطريقة اللي ثبت إنها تشتغل: إرسال نفس إشارة أزرار الصوت اللي على حافة الشاشة
+ * (xy.android.gtpkey.voladd / voldec)، كل إشارة تحرك الصوت درجة.
+ * والمستوى الحالي نقرأه من إعداد النظام McuMainVolume (من 0 إلى 30).
  */
 class CarVolume(private val context: Context) {
 
     companion object {
         const val MAIN_VOLUME_CHANGED = "xy.android.main.volume.changed"
+        private const val KEY_UP = "xy.android.gtpkey.voladd"
+        private const val KEY_DOWN = "xy.android.gtpkey.voldec"
         private const val SETTING_KEY = "McuMainVolume"
-        private const val VENDOR_MAX = 30
+        private const val STEP_MS = 130L
+        private const val MAX_STEPS = 45
     }
 
-    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val handler = Handler(Looper.getMainLooper())
+    private var target = -1
+    private var stepsLeft = 0
 
-    private val setMaster = try {
-        AudioManager::class.java.getMethod("setMasterVolume", Int::class.javaPrimitiveType)
-    } catch (e: Throwable) {
-        null
-    }
+    val max: Int = 30
 
-    /** آخر خطأ صار، يظهر في صفحة التشخيص. */
-    var lastError: String = ""
-        private set
-
-    val usesVendor: Boolean get() = setMaster != null
-
-    val max: Int
-        get() = if (usesVendor) VENDOR_MAX else audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+    /** صحيح طول ما الشريط يتحرك نحو قيمة طلبها المستخدم. */
+    val busy: Boolean get() = target >= 0
 
     fun current(): Int {
-        if (usesVendor) {
-            return try {
-                Settings.System.getInt(context.contentResolver, SETTING_KEY, 10)
-            } catch (e: Throwable) {
-                10
-            }
+        return try {
+            Settings.System.getInt(context.contentResolver, SETTING_KEY, 10)
+        } catch (e: Throwable) {
+            10
         }
-        return audio.getStreamVolume(AudioManager.STREAM_MUSIC)
     }
 
-    /** يرجع true إذا انطبق على صوت السيارة. */
-    fun set(level: Int): Boolean {
-        val value = level.coerceIn(0, max)
-        val method = setMaster
-        if (method != null) {
-            try {
-                method.invoke(audio, value)
-                lastError = ""
-                return true
-            } catch (e: Throwable) {
-                val cause = e.cause ?: e
-                lastError = cause.javaClass.simpleName + ": " + cause.message
+    private val stepper = object : Runnable {
+        override fun run() {
+            val now = current()
+            if (target < 0 || now == target || stepsLeft <= 0) {
+                target = -1
+                return
             }
+            stepsLeft--
+            context.sendBroadcast(Intent(if (now < target) KEY_UP else KEY_DOWN))
+            handler.postDelayed(this, STEP_MS)
         }
-        try {
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, value.coerceAtMost(
-                audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)), 0)
-        } catch (_: Throwable) {
-        }
-        return false
+    }
+
+    /** يحرك صوت السيارة درجة درجة لين يوصل للمستوى المطلوب. */
+    fun set(level: Int) {
+        target = level.coerceIn(0, max)
+        stepsLeft = MAX_STEPS
+        handler.removeCallbacks(stepper)
+        handler.post(stepper)
+    }
+
+    fun stop() {
+        handler.removeCallbacks(stepper)
+        target = -1
     }
 }

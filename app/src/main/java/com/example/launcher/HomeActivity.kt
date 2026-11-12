@@ -62,7 +62,6 @@ class HomeActivity : Activity() {
     private lateinit var music: MusicTile
     private lateinit var audio: AudioManager
     private lateinit var carVolume: CarVolume
-    private var volumeErrorShown = false
 
     private lateinit var root: View
     private lateinit var dateText: TextView
@@ -487,16 +486,14 @@ class HomeActivity : Activity() {
 
     private fun setVolume(level: Int) {
         val clamped = level.coerceIn(0, volBar.max)
-        // نحدّث الشريط فوراً، لأن إعداد المصنع ينكتب بعد لحظة
         volBar.value = clamped
         volText.text = String.format(arabic, "%d", clamped)
-        if (!carVolume.set(clamped) && carVolume.usesVendor && !volumeErrorShown) {
-            volumeErrorShown = true
-            toast("تعذر تغيير صوت السيارة: " + carVolume.lastError)
-        }
+        carVolume.set(clamped)
     }
 
     private fun refreshVolume() {
+        // والمستخدم يحرك الشريط، ما نرجّعه للقيمة القديمة
+        if (carVolume.busy) return
         val current = carVolume.current()
         volBar.value = current
         volText.text = String.format(arabic, "%d", current)
@@ -644,6 +641,7 @@ class HomeActivity : Activity() {
         idle.stop()
         music.stop()
         stopSpeed()
+        carVolume.stop()
         try {
             unregisterReceiver(volumeReceiver)
         } catch (_: Exception) {

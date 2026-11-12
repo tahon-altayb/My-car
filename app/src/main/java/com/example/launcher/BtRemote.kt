@@ -24,6 +24,7 @@ class BtRemote(private val context: Context) {
         private const val A2DP_PLAYING_CHANGED =
             "android.bluetooth.a2dp-sink.profile.action.PLAYING_STATE_CHANGED"
         private const val VENDOR_PREFIX = "com.autochips.bluetooth.avrcpct.profile.action."
+        private const val VENDOR_EXTRA = "com.autochips.bluetooth.avrcpct.profile.extra."
         private val VENDOR_ACTIONS = listOf(
             "ACTION_EVENT_NOTIFICATION_CHANGED", "GET_CAPABILITY_CNF", "GET_ELEMENT_ATTRIBUTES",
             "GET_PLAYER_STATUS", "PASSTHROUGH_COMMAND_CNF", "REMOTE_RC_FEATURES"
@@ -41,7 +42,19 @@ class BtRemote(private val context: Context) {
     }
 
     private var proxy: Any? = null
-    var playing = false
+    private var a2dpPlaying = false
+    private var lastPositionEvent = 0L
+
+    /** موضع الأغنية بالملّي ثانية، من رسائل برنامج البلوتوث. */
+    var positionMs = 0L
+        private set
+
+    /** الجوال يشغّل الآن؟ رسالة الموضع تجي كل ثانية طول ما الأغنية شغالة. */
+    val playing: Boolean
+        get() = a2dpPlaying || android.os.SystemClock.elapsedRealtime() - lastPositionEvent < 2500L
+
+    /** شفنا نشاط موسيقى بلوتوث في هذي الجلسة؟ */
+    var seen = false
         private set
     var onChange: (() -> Unit)? = null
 
@@ -60,8 +73,21 @@ class BtRemote(private val context: Context) {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
             if (intent.action == A2DP_PLAYING_CHANGED) {
-                playing = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, 11) == 10
+                a2dpPlaying = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, 11) == 10
+                seen = true
                 onChange?.invoke()
+                return
+            }
+            if (intent.action == VENDOR_PREFIX + "ACTION_EVENT_NOTIFICATION_CHANGED") {
+                val event = intent.getByteExtra(VENDOR_EXTRA + "EVENTID", 0).toInt()
+                if (event == 5) {
+                    // موضع التشغيل: تجي كل ثانية، فما نسجلها عشان ما تغرق السجل
+                    positionMs = intent.getLongExtra(VENDOR_EXTRA + "PARAM", 0L)
+                    lastPositionEvent = android.os.SystemClock.elapsedRealtime()
+                    seen = true
+                    onChange?.invoke()
+                    return
+                }
             }
             val sb = StringBuilder("RX ").append(intent.action?.substringAfterLast('.'))
             try {
@@ -148,5 +174,31 @@ class BtRemote(private val context: Context) {
         }
     }
 
-    fun playPause(): Boolean = send(if (playing) KEY_PAUSE else KEY_PLAY)
+    /** أوامر برنامج البلوتوث حق المصنع (نفس إشارات أزرار الدركسون). */
+    private fun vendor(action: String) {
+        context.sendBroadcast(Intent(action))
+        note("TX broadcast $action")
+    }
+
+    fun playPause() {
+        if (!send(if (playing) KEY_PAUSE else KEY_PLAY)) vendor("xy.android.playpause")
+    }
+
+    fun next() {
+        if (!send(KEY_NEXT)) vendor("xy.android.nextmedia")
+    }
+
+    fun prev() {
+        if (!send(KEY_PREV)) vendor("xy.android.previousmedia")
+    }
+
+    /** للتجربة من صفحة التشخيص: طريقة واحدة محددة. */
+    fun test(method: Int, what: Int): String = when (method) {
+        1 -> "passthrough ok=" + send(intArrayOf(if (playing) KEY_PAUSE else KEY_PLAY, KEY_NEXT, KEY_PREV)[what]) +
+            " proxy=" + (proxy != null) + " dev=" + (device() != null)
+        else -> {
+            vendor(arrayOf("xy.android.playpause", "xy.android.nextmedia", "xy.android.previousmedia")[what])
+            "broadcast sent"
+        }
+    }
 }

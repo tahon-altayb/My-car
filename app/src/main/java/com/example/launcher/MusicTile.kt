@@ -45,7 +45,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     private val listenerComponent = ComponentName(activity, NowPlayingService::class.java)
 
     private var controller: MediaController? = null
-    private val bt = BtRemote(activity)
+    val bt = BtRemote(activity)
     private var listening = false
     private var userSeeking = false
     private var durationMs = 0L
@@ -80,17 +80,19 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
         activity.findViewById<ImageButton>(R.id.musicPrev).setOnClickListener {
             val c = controller
             if (c != null) c.transportControls.skipToPrevious()
-            else if (!bt.send(BtRemote.KEY_PREV)) sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            else if (bt.seen) bt.prev()
+            else sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
         }
         activity.findViewById<ImageButton>(R.id.musicNext).setOnClickListener {
             val c = controller
             if (c != null) c.transportControls.skipToNext()
-            else if (!bt.send(BtRemote.KEY_NEXT)) sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+            else if (bt.seen) bt.next()
+            else sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
         }
         playButton.setOnClickListener {
             val c = controller
             if (c == null) {
-                if (!bt.playPause()) sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                if (bt.seen) bt.playPause() else sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             } else if (c.playbackState?.state == PlaybackState.STATE_PLAYING) {
                 c.transportControls.pause()
             } else {
@@ -116,12 +118,20 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
         })
     }
 
-    /** لما ما فيه مشغّل داخل الراديو والجوال متصل بلوتوث. */
+    private val btRecheck = Runnable { renderBluetooth() }
+
+    /** لما ما فيه مشغّل داخل الراديو والموسيقى جاية من الجوال بالبلوتوث. */
     private fun renderBluetooth() {
-        if (controller != null || !bt.isConnected()) return
+        if (controller != null || !bt.seen) return
+        val playing = bt.playing
+        nowPlaying = if (playing) "موسيقى البلوتوث" else ""
         titleView.text = "موسيقى البلوتوث"
-        artistView.text = if (bt.playing) "يشتغل من الجوال" else "متوقف"
-        playButton.setImageResource(if (bt.playing) R.drawable.ic_pause else R.drawable.ic_play)
+        artistView.text = if (playing) "يشتغل من الجوال" else "متوقف"
+        playButton.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
+        elapsedView.text = if (bt.positionMs > 0) formatTime(bt.positionMs) else ""
+        // رسالة الموضع تجي كل ثانية؛ لو وقفت نعرف إنه توقف
+        handler.removeCallbacks(btRecheck)
+        if (playing) handler.postDelayed(btRecheck, 2800L)
     }
 
     fun start() {
@@ -143,6 +153,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
 
     fun stop() {
         bt.stop()
+        handler.removeCallbacks(btRecheck)
         handler.removeCallbacks(tick)
         if (listening) {
             try {
