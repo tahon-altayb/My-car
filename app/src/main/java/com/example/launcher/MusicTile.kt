@@ -45,6 +45,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     private val listenerComponent = ComponentName(activity, NowPlayingService::class.java)
 
     private var controller: MediaController? = null
+    private val bt = BtRemote(activity)
     private var listening = false
     private var userSeeking = false
     private var durationMs = 0L
@@ -75,18 +76,21 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     }
 
     init {
+        bt.onChange = { handler.post { renderBluetooth() } }
         activity.findViewById<ImageButton>(R.id.musicPrev).setOnClickListener {
-            controller?.transportControls?.skipToPrevious()
-                ?: sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            val c = controller
+            if (c != null) c.transportControls.skipToPrevious()
+            else if (!bt.send(BtRemote.KEY_PREV)) sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
         }
         activity.findViewById<ImageButton>(R.id.musicNext).setOnClickListener {
-            controller?.transportControls?.skipToNext()
-                ?: sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+            val c = controller
+            if (c != null) c.transportControls.skipToNext()
+            else if (!bt.send(BtRemote.KEY_NEXT)) sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
         }
         playButton.setOnClickListener {
             val c = controller
             if (c == null) {
-                sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                if (!bt.playPause()) sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             } else if (c.playbackState?.state == PlaybackState.STATE_PLAYING) {
                 c.transportControls.pause()
             } else {
@@ -112,7 +116,16 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
         })
     }
 
+    /** لما ما فيه مشغّل داخل الراديو والجوال متصل بلوتوث. */
+    private fun renderBluetooth() {
+        if (controller != null || !bt.isConnected()) return
+        titleView.text = "موسيقى البلوتوث"
+        artistView.text = if (bt.playing) "يشتغل من الجوال" else "متوقف"
+        playButton.setImageResource(if (bt.playing) R.drawable.ic_pause else R.drawable.ic_play)
+    }
+
     fun start() {
+        bt.start()
         if (!hasAccess()) {
             showNoAccess()
             return
@@ -129,6 +142,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
     }
 
     fun stop() {
+        bt.stop()
         handler.removeCallbacks(tick)
         if (listening) {
             try {
@@ -175,6 +189,7 @@ class MusicTile(private val activity: Activity, private val handler: Handler) {
         controller?.registerCallback(controllerCallback, handler)
         renderMetadata(controller?.metadata)
         renderState(controller?.playbackState)
+        renderBluetooth()
     }
 
     private fun renderMetadata(metadata: MediaMetadata?) {
