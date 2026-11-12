@@ -56,6 +56,10 @@ class DiagActivity : Activity() {
         closeButton.text = "إغلاق"
         closeButton.setOnClickListener { finish() }
 
+        val probeButton = Button(this)
+        probeButton.text = "فحص البلوتوث والصوت"
+        probeButton.setOnClickListener { probe() }
+
         val exportButton = Button(this)
         exportButton.text = "نسخ برامج المصنع"
         exportButton.setOnClickListener { exportApks() }
@@ -64,6 +68,7 @@ class DiagActivity : Activity() {
         bar.orientation = LinearLayout.HORIZONTAL
         bar.addView(closeButton)
         bar.addView(exportButton)
+        bar.addView(probeButton)
         bar.addView(saveButton)
         bar.addView(adbButton)
 
@@ -172,6 +177,87 @@ class DiagActivity : Activity() {
             val port = run(arrayOf("getprop", "service.adb.tcp.port"))
             val text = "== ADB ATTEMPT ==\nsh: " + plain + "\nsu: " + root +
                 "\nport now: " + port + "\n\n" + report
+            handler.post {
+                report = text
+                output.text = text
+            }
+        }.start()
+    }
+
+    // ---------- فحص البلوتوث والصوت ----------
+
+    private fun listMethods(sb: StringBuilder, cls: Class<*>, filter: Regex?) {
+        sb.append("CLASS ").append(cls.name).append(" extends ").append(cls.superclass?.name).append('\n')
+        val methods = try { cls.declaredMethods } catch (e: Throwable) { emptyArray() }
+        for (m in methods.sortedBy { it.name }) {
+            if (filter != null && !filter.containsMatchIn(m.name)) continue
+            sb.append("   ").append(m.name).append('(')
+                .append(m.parameterTypes.joinToString(",") { it.simpleName })
+                .append("): ").append(m.returnType.simpleName).append('\n')
+        }
+        try {
+            for (f in cls.declaredFields) {
+                if (java.lang.reflect.Modifier.isStatic(f.modifiers) &&
+                    (f.type == Int::class.javaPrimitiveType || f.type == String::class.java)) {
+                    f.isAccessible = true
+                    sb.append("   F ").append(f.name).append(" = ").append(f.get(null)).append('\n')
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun probe() {
+        output.text = "..."
+        Thread {
+            val sb = StringBuilder("== PROBE ==\n")
+            // الصوت
+            val vol = CarVolume(this)
+            sb.append("vendor volume api: ").append(vol.usesVendor)
+                .append("  McuMainVolume=").append(vol.current()).append('\n')
+            val before = vol.current()
+            val ok = vol.set(before)
+            sb.append("set same value ok=").append(ok).append(" err=").append(vol.lastError).append('\n')
+            listMethods(sb, android.media.AudioManager::class.java, Regex("(?i)master|mcu|xy"))
+
+            // كلاسات البلوتوث في النظام
+            for (name in listOf(
+                "android.bluetooth.BluetoothAvrcpController",
+                "android.bluetooth.BluetoothA2dpSink",
+                "android.bluetooth.BluetoothAvrcpPlayerSettings"
+            )) {
+                try {
+                    listMethods(sb, Class.forName(name), null)
+                } catch (e: Throwable) {
+                    sb.append("missing ").append(name).append('\n')
+                }
+            }
+            // كلاسات برنامج البلوتوث حق المصنع
+            try {
+                val ctx = createPackageContext(
+                    "com.autochips.bluetooth",
+                    Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY
+                )
+                for (name in listOf(
+                    "com.autochips.bluetooth.AvrcpControllerProfile",
+                    "com.autochips.bluetooth.AvrcpControllerProfile\$MetadataCallback",
+                    "com.autochips.bluetooth.BtUtils"
+                )) {
+                    try {
+                        listMethods(sb, ctx.classLoader.loadClass(name), null)
+                    } catch (e: Throwable) {
+                        sb.append("missing ").append(name).append(": ").append(e.javaClass.simpleName).append('\n')
+                    }
+                }
+            } catch (e: Throwable) {
+                sb.append("vendor bt context: ").append(e).append('\n')
+            }
+            // مكتبات النظام المشتركة
+            for (dir in listOf("/system/framework", "/system/etc/permissions")) {
+                sb.append("DIR ").append(dir).append(": ")
+                    .append(File(dir).list()?.sorted()?.joinToString(" ") ?: "?").append('\n')
+            }
+            val text = sb.toString() + "\n" + report
             handler.post {
                 report = text
                 output.text = text

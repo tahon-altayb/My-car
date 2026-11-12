@@ -61,6 +61,8 @@ class HomeActivity : Activity() {
     private lateinit var idle: IdleController
     private lateinit var music: MusicTile
     private lateinit var audio: AudioManager
+    private lateinit var carVolume: CarVolume
+    private var volumeErrorShown = false
 
     private lateinit var root: View
     private lateinit var dateText: TextView
@@ -475,7 +477,8 @@ class HomeActivity : Activity() {
     // ---------- الصوت ----------
 
     private fun setupVolume() {
-        volBar.max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        carVolume = CarVolume(this)
+        volBar.max = carVolume.max
         volBar.onChange = { setVolume(it) }
         findViewById<Button>(R.id.volUp).setOnClickListener { setVolume(volBar.value + 1) }
         findViewById<Button>(R.id.volDown).setOnClickListener { setVolume(volBar.value - 1) }
@@ -484,15 +487,17 @@ class HomeActivity : Activity() {
 
     private fun setVolume(level: Int) {
         val clamped = level.coerceIn(0, volBar.max)
-        try {
-            audio.setStreamVolume(AudioManager.STREAM_MUSIC, clamped, 0)
-        } catch (_: Exception) {
+        // نحدّث الشريط فوراً، لأن إعداد المصنع ينكتب بعد لحظة
+        volBar.value = clamped
+        volText.text = String.format(arabic, "%d", clamped)
+        if (!carVolume.set(clamped) && carVolume.usesVendor && !volumeErrorShown) {
+            volumeErrorShown = true
+            toast("تعذر تغيير صوت السيارة: " + carVolume.lastError)
         }
-        refreshVolume()
     }
 
     private fun refreshVolume() {
-        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val current = carVolume.current()
         volBar.value = current
         volText.text = String.format(arabic, "%d", current)
     }
@@ -623,7 +628,9 @@ class HomeActivity : Activity() {
         super.onResume()
         music.start()
         refreshVolume()
-        registerReceiver(volumeReceiver, IntentFilter(VOLUME_CHANGED))
+        val volumeFilter = IntentFilter(VOLUME_CHANGED)
+        volumeFilter.addAction(CarVolume.MAIN_VOLUME_CHANGED)
+        registerReceiver(volumeReceiver, volumeFilter)
         startSpeed()
         AppRepo.load(this) { onAppsLoaded() }
         idle.poke()
