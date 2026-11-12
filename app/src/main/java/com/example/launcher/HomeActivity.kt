@@ -570,6 +570,9 @@ class HomeActivity : Activity() {
         }
         findViewById<Button>(R.id.drawerClose).setOnClickListener { closeDrawer(animate = true) }
         findViewById<View>(R.id.drawerHandle).setOnClickListener { openDrawer(null) }
+        findViewById<Button>(R.id.drawerDiag).setOnClickListener {
+            startActivity(Intent(this, DiagActivity::class.java))
+        }
     }
 
     private fun isDrawerOpen(): Boolean = drawer.visibility == View.VISIBLE

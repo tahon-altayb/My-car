@@ -452,6 +452,18 @@
                 android:textColor="?attr/lText"
                 android:textSize="18sp" />
 
+            <Button
+                android:id="@+id/drawerDiag"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/bg_tile"
+                android:minWidth="110dp"
+                android:stateListAnimator="@null"
+                android:text="تشخيص"
+                android:textColor="?attr/lText"
+                android:textSize="18sp" />
+
             <TextView
                 android:id="@+id/drawerTitle"
                 android:layout_width="0dp"

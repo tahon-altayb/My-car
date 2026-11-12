@@ -26,6 +26,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DiagActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape" />
+
         <!-- يفتح اللانشر عند تشغيل الراديو، حتى لو النظام رجع للواجهة القديمة -->
         <receiver
             android:name=".BootReceiver"
