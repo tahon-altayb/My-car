@@ -17,6 +17,7 @@ class PhotoTile(
     private val handler: Handler,
     private val image: ImageView,
     private val hint: TextView,
+    private val internal: File,
     private val intervalMs: Long
 ) {
     companion object {
@@ -54,6 +55,11 @@ class PhotoTile(
                 File("/storage").listFiles()?.let { roots.addAll(it) }
             } catch (_: Throwable) {
             }
+            // الصور المنسوخة داخل الراديو: تشتغل بدون فلاشة وبدون صلاحيات
+            try {
+                for (f in internal.listFiles() ?: emptyArray()) if (f.isFile) found.add(f)
+            } catch (_: Throwable) {
+            }
             // ندوّر على أي مجلد اسمه LauncherPhotos، حتى لو داخل Pictures أو DCIM أو غيرها
             for (root in roots) {
                 for (dir in findFolders(root, 0)) {
@@ -68,7 +74,7 @@ class PhotoTile(
                     }
                 }
             }
-            val sorted = found.distinctBy { it.absolutePath }.sortedBy { it.name }
+            val sorted = found.distinctBy { it.name }.sortedBy { it.name }
             handler.post {
                 val changed = sorted.map { it.absolutePath } != files.map { it.absolutePath }
                 files = sorted

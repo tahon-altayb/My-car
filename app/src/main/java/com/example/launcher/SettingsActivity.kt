@@ -77,6 +77,16 @@ class SettingsActivity : Activity() {
         choice("شريط الصوت", "show_volume", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
         choice("أعمدة قائمة التطبيقات", "drawer_cols", listOf("5", "6", "7", "8"), listOf("5", "6", "7", "8"), "6")
 
+        header("الصور")
+        action("صور الفلاشة", "نسخها للراديو") {
+            store.setQuiet("pending_photos", "import")
+            finish()
+        }
+        action("", "حذف الصور المنسوخة") {
+            store.setQuiet("pending_photos", "delete")
+            finish()
+        }
+
         header("الوقت والشاشة")
         choice("نظام الساعة", "clock24", listOf("0", "1"), listOf("12 ساعة", "24 ساعة"), "0")
         choice(

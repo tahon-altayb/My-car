@@ -96,6 +96,8 @@ class HomeActivity : Activity() {
 
     private var appliedDay = false
     private var appliedRev = 0
+    private var lastFixAt = 0L
+    private lateinit var speedUnit: TextView
     private var nextPrayerLabel = ""
     private var weatherLoading = false
     private var lastWeatherAttempt = 0L
@@ -114,6 +116,7 @@ class HomeActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             refreshTimeViews()
+            refreshSpeedStatus()
             maybeRefreshWeather()
             // الوضع التلقائي: يتبدل عند الشروق والمغرب
             if (store.themeMode() == AppStore.MODE_AUTO && isDayNow() != appliedDay) {
@@ -132,10 +135,10 @@ class HomeActivity : Activity() {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            if (location.hasSpeed()) {
-                val kmh = Math.round(location.speed * 3.6f)
-                speedText.text = String.format(Locale.US, "%d", kmh)
-            }
+            lastFixAt = SystemClock.elapsedRealtime()
+            val kmh = if (location.hasSpeed()) Math.round(location.speed * 3.6f) else 0
+            speedText.text = String.format(Locale.US, "%d", kmh)
+            speedUnit.text = "كم/س"
             syncClock(location.time)
             val moved = !store.hasFix() ||
                 Math.abs(location.latitude - store.lat()) > 0.05 ||
@@ -173,6 +176,8 @@ class HomeActivity : Activity() {
         dateText = findViewById(R.id.dateText)
         clockText = findViewById(R.id.clockText)
         speedText = findViewById(R.id.speedText)
+        speedUnit = findViewById(R.id.speedUnit)
+        findViewById<View>(R.id.speedCard).setOnClickListener { fixLocationSetup() }
         weatherTemp = findViewById(R.id.weatherTemp)
         weatherDesc = findViewById(R.id.weatherDesc)
         nextPrayerText = findViewById(R.id.nextPrayerText)
@@ -192,6 +197,7 @@ class HomeActivity : Activity() {
 
         photos = PhotoTile(
             handler, findViewById(R.id.photoImage), findViewById(R.id.photoHint),
+            java.io.File(filesDir, "photos"),
             (store.str("photo_sec", "7").toLongOrNull() ?: 7L) * 1000L
         )
         findViewById<View>(R.id.photoTile).setOnClickListener { photos.next() }
@@ -211,8 +217,15 @@ class HomeActivity : Activity() {
             onIdle = {
                 refreshTimeViews()
                 idleOverlay.visibility = View.VISIBLE
+                // شاشة الانتظار خافتة: نوطّي سطوع الشاشة
+                val attrs = window.attributes
+                attrs.screenBrightness = 0.12f
+                window.attributes = attrs
             },
-            onWake = { idleOverlay.visibility = View.GONE }
+            onWake = {
+                idleOverlay.visibility = View.GONE
+                applyBrightness(store.brightness())
+            }
         )
 
         showWeather()
@@ -351,6 +364,15 @@ class HomeActivity : Activity() {
 
     /** طلب من صفحة الإعدادات: اختيار خلفية أو إزالتها، أو تعديل أماكن المربعات. */
     private fun handlePendingWallpaper() {
+        if (store.str("pending_photos", "") != "") {
+            val what = store.str("pending_photos", "")
+            store.setQuiet("pending_photos", "")
+            if (what == "import") importPhotos() else {
+                java.io.File(filesDir, "photos").deleteRecursively()
+                photos.scan()
+                toast("انحذفت الصور المنسوخة")
+            }
+        }
         if (store.str("pending_edit", "") == "1") {
             store.setQuiet("pending_edit", "")
             if (store.rev() == appliedRev) setEditMode(true) else store.setQuiet("pending_edit_after", "1")
@@ -364,6 +386,67 @@ class HomeActivity : Activity() {
             wallpaperFile().delete()
             loadWallpaper()
         }
+    }
+
+    // ---------- حالة السرعة والموقع ----------
+
+    /** يوضح ليش السرعة ما تظهر، بدل ما يبقى المربع فاضي. */
+    private fun refreshSpeedStatus() {
+        if (SystemClock.elapsedRealtime() - lastFixAt < 5000L && lastFixAt != 0L) return
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        speedText.text = "--"
+        speedUnit.text = when {
+            !granted(Manifest.permission.ACCESS_FINE_LOCATION) -> "اضغط للسماح بالموقع"
+            !lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> "اضغط لتشغيل GPS"
+            else -> "بانتظار الأقمار"
+        }
+    }
+
+    private fun fixLocationSetup() {
+        if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            requestMissingPermissions()
+            return
+        }
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            } catch (_: Exception) {
+                toast("شغّل الموقع من إعدادات الأندرويد")
+            }
+        }
+    }
+
+    // ---------- نسخ الصور من الفلاشة للراديو ----------
+
+    private fun importPhotos() {
+        toast("جاري نسخ الصور...")
+        Thread {
+            val dest = java.io.File(filesDir, "photos")
+            dest.mkdirs()
+            var copied = 0
+            try {
+                val roots = java.io.File("/storage").listFiles() ?: emptyArray()
+                for (root in roots + arrayOf(android.os.Environment.getExternalStorageDirectory())) {
+                    val dir = java.io.File(root, PhotoTile.FOLDER)
+                    for (f in dir.listFiles() ?: emptyArray()) {
+                        val name = f.name.lowercase()
+                        if (!f.isFile || !(name.endsWith(".jpg") || name.endsWith(".jpeg") ||
+                                name.endsWith(".png") || name.endsWith(".webp"))
+                        ) continue
+                        val out = java.io.File(dest, f.name)
+                        if (out.exists() && out.length() == f.length()) continue
+                        f.inputStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+                        copied++
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+            handler.post {
+                toast(if (copied > 0) "انسخت $copied صورة للراديو، تقدر تشيل الفلاشة" else "ما لقيت صور جديدة في مجلد LauncherPhotos")
+                photos.scan()
+            }
+        }.start()
     }
 
     // ---------- إبقاء البلوتوث شغال ----------

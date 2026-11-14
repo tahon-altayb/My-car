@@ -29,7 +29,7 @@
 
                     <com.example.launcher.FitTextView android:id="@+id/speedText" android:layout_width="match_parent" android:layout_height="0dp" android:text="0" android:textColor="?attr/lAccent" android:textSize="80sp" android:textStyle="bold" android:layout_weight="1" android:gravity="center" android:singleLine="true"/>
 
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="كم/س" android:textColor="?attr/lTextDim" android:textSize="17sp"/>
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/speedUnit" android:text="كم/س" android:gravity="center" android:textColor="?attr/lTextDim" android:textSize="17sp"/>
                 </LinearLayout><LinearLayout android:id="@+id/weatherCard" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_card" android:orientation="vertical" android:padding="14dp">
 
                         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
@@ -124,11 +124,12 @@
         <RelativeLayout android:layout_width="match_parent" android:layout_height="match_parent">
 
             <!-- الساعة في منتصف الشاشة تماماً -->
-            <TextView android:id="@+id/idleClock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerInParent="true" android:singleLine="true" android:textColor="#FFFFFF" android:textSize="128sp" android:textStyle="bold" android:layout_marginBottom="40dp"/>
+            <View android:id="@+id/idleAnchor" android:layout_width="1dp" android:layout_height="1dp" android:layout_centerInParent="true"/>
+            <TextView android:id="@+id/idleClock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_above="@id/idleAnchor" android:layout_centerHorizontal="true" android:layout_marginBottom="6dp" android:singleLine="true" android:textColor="#8B96A8" android:textSize="120sp" android:textStyle="bold"/>
 
-            <TextView android:id="@+id/idlePrayer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_below="@id/idleClock" android:layout_centerHorizontal="true" android:layout_marginTop="4dp" android:textColor="#FFFFFF" android:textSize="36sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/idlePrayer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_below="@id/idleAnchor" android:layout_centerHorizontal="true" android:layout_marginTop="26dp" android:textColor="#6E7889" android:textSize="34sp" android:textStyle="bold"/>
 
-            <TextView android:id="@+id/idleNowPlaying" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_alignParentBottom="true" android:layout_marginBottom="48dp" android:ellipsize="end" android:gravity="center" android:paddingLeft="24dp" android:paddingRight="24dp" android:singleLine="true" android:textColor="#FFFFFF" android:textSize="32sp" android:textStyle="bold"/>
+            <TextView android:id="@+id/idleNowPlaying" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_alignParentBottom="true" android:layout_marginBottom="48dp" android:ellipsize="end" android:gravity="center" android:paddingLeft="24dp" android:paddingRight="24dp" android:singleLine="true" android:textColor="#6E7889" android:textSize="28sp" android:textStyle="bold"/>
         </RelativeLayout>
     </FrameLayout>
 
