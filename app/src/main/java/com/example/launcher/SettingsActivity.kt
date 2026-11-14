@@ -106,6 +106,9 @@ class SettingsActivity : Activity() {
             listOf("قبل 10 دقائق", "قبل 15 دقيقة", "قبل 5 دقائق", "بدون تنبيه"), "10"
         )
 
+        header("البلوتوث")
+        choice("تشغيل بلوتوث الراديو تلقائياً لو كان طافي", "bt_keep_on", listOf("1", "0"), listOf("شغال", "مطفي"), "1")
+
         header("أدوات")
         action("صفحة التشخيص", "فتح") { startActivity(Intent(this, DiagActivity::class.java)) }
     }

@@ -112,6 +112,7 @@ class BtRemote private constructor(private val context: Context) {
     private var vendorService: android.os.IBinder? = null
     private var vendorBound = false
     private var lastRequest = 0L
+    private var requestsThisTrack = 0
 
     private val vendorConnection = object : android.content.ServiceConnection {
         override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
@@ -142,7 +143,7 @@ class BtRemote private constructor(private val context: Context) {
                 val info = found[0].serviceInfo
                 val intent = Intent(action)
                 intent.setClassName(info.packageName, info.name)
-                val ok = context.bindService(intent, vendorConnection, Context.BIND_AUTO_CREATE)
+                val ok = context.bindService(intent, vendorConnection, 0)
                 note("bind " + info.packageName + "/" + info.name + " = " + ok)
                 if (ok) {
                     vendorBound = true
@@ -158,7 +159,10 @@ class BtRemote private constructor(private val context: Context) {
     fun requestInfo(force: Boolean) {
         val binder = vendorService ?: return
         val now = android.os.SystemClock.elapsedRealtime()
-        if (!force && now - lastRequest < 4000L) return
+        if (!force && now - lastRequest < 6000L) return
+        // ما نزحم البلوتوث: حد أقصى 3 طلبات لكل أغنية
+        if (requestsThisTrack >= 3) return
+        requestsThisTrack++
         lastRequest = now
         try {
             val data = android.os.Parcel.obtain()
@@ -248,6 +252,7 @@ class BtRemote private constructor(private val context: Context) {
                     positionMs = 0L
                     durationMs = 0L
                     seen = true
+                    requestsThisTrack = 0
                     requestInfo(true)
                     onChange?.invoke()
                     return
@@ -303,22 +308,69 @@ class BtRemote private constructor(private val context: Context) {
         }
     }
 
+    private var linked = false
+
+    /** نراقب حالة بلوتوث الراديو: ما نتصل بخدماته إلا بعد ما يشتغل بالكامل. */
+    private val stateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
+            note("bt adapter state = $state")
+            if (state == BluetoothAdapter.STATE_ON) {
+                // نعطي برنامج البلوتوث حق المصنع وقت يجهز قبلنا
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ link() }, 8000L)
+            } else if (state == BluetoothAdapter.STATE_OFF) {
+                unlink()
+            }
+        }
+    }
+
     private fun start() {
-        bindVendor()
         try {
             val filter = IntentFilter(A2DP_PLAYING_CHANGED)
             for (a in VENDOR_ACTIONS) filter.addAction(VENDOR_PREFIX + a)
             context.registerReceiver(receiver, filter)
+            context.registerReceiver(stateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         } catch (e: Throwable) {
             note("register failed: $e")
         }
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        if (adapter != null && adapter.state == BluetoothAdapter.STATE_ON) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ link() }, 8000L)
+        } else {
+            note("bt not on yet, waiting")
+        }
+    }
+
+    private fun link() {
+        if (linked) return
+        val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        if (adapter.state != BluetoothAdapter.STATE_ON) return
+        linked = true
+        bindVendor()
         try {
-            val adapter = BluetoothAdapter.getDefaultAdapter()
-            val ok = adapter?.getProfileProxy(context, listener, PROFILE_AVRCP_CONTROLLER)
+            val ok = adapter.getProfileProxy(context, listener, PROFILE_AVRCP_CONTROLLER)
             note("getProfileProxy(avrcp ct) = $ok")
         } catch (e: Throwable) {
             note("getProfileProxy failed: $e")
         }
+    }
+
+    /** البلوتوث انطفى: نفك كل اتصالاتنا عشان ما نعلّقه وهو يرجع يشتغل. */
+    private fun unlink() {
+        if (!linked) return
+        linked = false
+        try {
+            if (vendorBound) context.unbindService(vendorConnection)
+        } catch (_: Throwable) {
+        }
+        vendorBound = false
+        vendorService = null
+        try {
+            val p = proxy as? BluetoothProfile
+            if (p != null) BluetoothAdapter.getDefaultAdapter()?.closeProfileProxy(PROFILE_AVRCP_CONTROLLER, p)
+        } catch (_: Throwable) {
+        }
+        proxy = null
     }
 
     private fun device(): BluetoothDevice? {

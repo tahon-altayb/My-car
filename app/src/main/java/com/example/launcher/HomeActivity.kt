@@ -365,6 +365,22 @@ class HomeActivity : Activity() {
         }
     }
 
+    // ---------- إبقاء البلوتوث شغال ----------
+
+    /** لو بلوتوث الراديو طافي (بعد تشغيل السيارة مثلاً) نشغّله، إذا الإعداد مفعل. */
+    private fun ensureBluetoothOn() {
+        if (store.str("bt_keep_on", "1") != "1") return
+        try {
+            val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter() ?: return
+            if (adapter.state == android.bluetooth.BluetoothAdapter.STATE_OFF) {
+                val ok = adapter.enable()
+                BtRemote.note("auto enable bluetooth = $ok")
+            }
+        } catch (e: Throwable) {
+            BtRemote.note("auto enable failed: $e")
+        }
+    }
+
     // ---------- السطوع ----------
 
     private fun setupBrightness() {
@@ -975,6 +991,7 @@ class HomeActivity : Activity() {
     override fun onResume() {
         super.onResume()
         handlePendingWallpaper()
+        ensureBluetoothOn()
         if (store.rev() != appliedRev) {
             // تغيّرت الإعدادات: نعيد رسم الواجهة
             recreate()

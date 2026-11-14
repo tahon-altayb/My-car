@@ -242,7 +242,16 @@ class DiagActivity : Activity() {
     private fun probe() {
         output.text = "..."
         Thread {
-            val sb = StringBuilder("== BT LOG ==\n")
+            val sb = StringBuilder("== BT STATE ==\n")
+            try {
+                val ad = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+                sb.append("adapter state=").append(ad?.state).append(" (10=off 11=turning on 12=on 13=turning off)\n")
+                sb.append("bonded=").append(ad?.bondedDevices?.joinToString { it.name + "/" + it.bondState })
+                    .append('\n')
+            } catch (e: Throwable) {
+                sb.append("state error ").append(e).append('\n')
+            }
+            sb.append("== BT LOG ==\n")
             synchronized(BtRemote.log) { sb.append(BtRemote.log) }
             sb.append("== PROBE ==\n")
             // الصوت
