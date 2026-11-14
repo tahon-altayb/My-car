@@ -8,4 +8,5 @@
     <attr name="lAccent" format="color" />
     <attr name="lOnAccent" format="color" />
     <attr name="lStroke" format="color" />
+    <attr name="lIcon" format="color" />
 </resources>

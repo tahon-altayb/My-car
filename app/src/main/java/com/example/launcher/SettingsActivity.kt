@@ -54,14 +54,25 @@ class SettingsActivity : Activity() {
         choice("اللون الرئيسي", "accent", ThemeHelper.ACCENTS, ThemeHelper.ACCENT_NAMES, "blue")
         choice("خلفية الوضع الليلي", "bg_night", ThemeHelper.NIGHT_BGS, ThemeHelper.NIGHT_BG_NAMES, "navy")
         choice("خلفية الوضع النهاري", "bg_day", ThemeHelper.DAY_BGS, ThemeHelper.DAY_BG_NAMES, "ice")
+        choice("لون الخط", "text_tone", ThemeHelper.TEXT_TONES, ThemeHelper.TEXT_TONE_NAMES, "white")
+        choice("لون الأيقونات", "icon_tone", ThemeHelper.ICON_TONES, ThemeHelper.ICON_TONE_NAMES, "text")
+        choice("المربعات الزجاجية", "glass", listOf("0", "1"), listOf("مطفي", "شغال (أحلى مع صورة خلفية)"), "0")
         action("صورة الخلفية", "اختيار صورة") { requestWallpaper("pick") }
         action("", "إزالة صورة الخلفية") { requestWallpaper("remove") }
 
         header("ترتيب الواجهة")
-        choice("اتجاه الواجهة", "mirror", listOf("0", "1"), listOf("الساعة يسار والصوت يمين", "الساعة يمين والصوت يسار"), "0")
-        choice("الصف العلوي", "swap_top", listOf("0", "1"), listOf("الطقس ثم الموسيقى", "الموسيقى ثم الطقس"), "0")
-        choice("الصف السفلي", "swap_apps", listOf("0", "1"), listOf("التطبيقات ثم الصور", "الصور ثم التطبيقات"), "0")
+        action("أماكن وأحجام المربعات", "تعديل") {
+            store.setQuiet("pending_edit", "1")
+            finish()
+        }
+        action("", "رجوع للترتيب الافتراضي") {
+            store.setStr("grid_layout", "")
+            android.widget.Toast.makeText(this, "رجع الترتيب الافتراضي", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        choice("الساعة", "show_clock", listOf("1", "0"), listOf("ظاهرة", "مخفية"), "1")
         choice("مربع السرعة", "show_speed", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
+        choice("الطقس والصلاة", "show_weather", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
+        choice("الموسيقى", "show_music", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
         choice("مربع الصور", "show_photo", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
         choice("شريط الصوت", "show_volume", listOf("1", "0"), listOf("ظاهر", "مخفي"), "1")
         choice("أعمدة قائمة التطبيقات", "drawer_cols", listOf("5", "6", "7", "8"), listOf("5", "6", "7", "8"), "6")
@@ -153,7 +164,7 @@ class SettingsActivity : Activity() {
             val next = (values.indexOf(store.str(key, default)).coerceAtLeast(0) + 1) % values.size
             store.setStr(key, values[next])
             // الألوان والوضع تغيّر شكل هذي الصفحة نفسها، فنعيد رسمها
-            if (key == "accent" || key == "bg_night" || key == "bg_day") recreate()
+            if (key == "accent" || key == "bg_night" || key == "bg_day" || key == "text_tone" || key == "icon_tone") recreate()
             else button.text = names[next]
         }
         row(label, button)

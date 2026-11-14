@@ -12,8 +12,8 @@ android {
         // رواديو 8227L تعرض 8.1 لكن نظامها الفعلي غالباً أقدم، فننزل الحد الأدنى
         minSdk 21
         targetSdk 27
-        versionCode 14
-        versionName '0.14'
+        versionCode 15
+        versionName '0.15'
     }
 
     buildTypes {

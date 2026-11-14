@@ -259,53 +259,101 @@ class HomeActivity : Activity() {
         return if (seconds <= 0L) 365L * 24 * 3600 * 1000 else seconds * 1000L
     }
 
-    /** يرتب الأعمدة والمربعات حسب الإعدادات، ويضبط المسافات بينها. */
-    private fun reorder(parent: LinearLayout, order: List<View>, gapDp: Int) {
-        parent.removeAllViews()
-        val gap = (gapDp * resources.displayMetrics.density).toInt()
-        var first = true
-        for (view in order) {
-            val params = view.layoutParams as LinearLayout.LayoutParams
-            params.leftMargin = if (first || view.visibility == View.GONE) 0 else gap
-            params.rightMargin = 0
-            parent.addView(view, params)
-            if (view.visibility != View.GONE) first = false
+    // ---------- لوحة المربعات: الأماكن والأحجام ----------
+
+    private lateinit var board: GridBoard
+
+    private val defaultCells = mapOf(
+        "clock" to android.graphics.Rect(0, 0, 3, 2),
+        "speed" to android.graphics.Rect(0, 2, 3, 8),
+        "weather" to android.graphics.Rect(3, 0, 7, 5),
+        "music" to android.graphics.Rect(7, 0, 11, 5),
+        "maps" to android.graphics.Rect(3, 5, 5, 8),
+        "app1" to android.graphics.Rect(5, 5, 7, 8),
+        "photo" to android.graphics.Rect(7, 5, 11, 8),
+        "volume" to android.graphics.Rect(11, 0, 12, 8)
+    )
+
+    private fun applyLayoutPrefs() {
+        board = findViewById(R.id.mainRow)
+        board.add("clock", clockText, 2, 1, "الساعة")
+        board.add("speed", findViewById(R.id.speedCard), 2, 2, "السرعة")
+        board.add("weather", findViewById(R.id.weatherCard), 3, 3, "الطقس والصلاة")
+        board.add("music", findViewById(R.id.musicCard), 3, 4, "الموسيقى")
+        board.add("maps", findViewById(R.id.mapsTile), 1, 2, "الخرائط")
+        board.add("app1", findViewById(R.id.slot1), 1, 2, "تطبيق")
+        board.add("photo", findViewById(R.id.photoTile), 2, 2, "الصور")
+        board.add("volume", volumeColumn, 1, 4, "الصوت")
+        board.load(store.str("grid_layout", ""), defaultCells)
+
+        val shown = mapOf(
+            "clock" to "show_clock", "speed" to "show_speed", "weather" to "show_weather",
+            "music" to "show_music", "photo" to "show_photo", "volume" to "show_volume"
+        )
+        for (wd in board.widgets) {
+            val key = shown[wd.key] ?: continue
+            wd.view.visibility = if (store.str(key, "1") == "1") View.VISIBLE else View.GONE
+        }
+        // مربع رجع يظهر ومكانه صار مشغول: ندوّر له على مكان فاضي
+        for (wd in board.widgets) {
+            if (wd.view.visibility == View.GONE || !board.overlaps(wd.cell, wd)) continue
+            if (!board.findFreeSpot(wd)) {
+                wd.view.visibility = View.GONE
+                toast("ما فيه مكان لـ " + wd.label + "، صغّر مربع ثاني وأظهره من الإعدادات")
+            }
+        }
+
+        board.onChanged = { store.setQuiet("grid_layout", board.serialize()) }
+        board.onRejected = { toast("المكان مشغول بمربع ثاني") }
+        findViewById<Button>(R.id.editDone).setOnClickListener { setEditMode(false) }
+        findViewById<Button>(R.id.editReset).setOnClickListener {
+            board.load("", defaultCells)
+            store.setQuiet("grid_layout", "")
+        }
+
+        findViewById<GridView>(R.id.drawerGrid).numColumns =
+            store.str("drawer_cols", "6").toIntOrNull() ?: 6
+        applyGlass()
+    }
+
+    private fun setEditMode(on: Boolean) {
+        board.editMode = on
+        findViewById<View>(R.id.editBar).visibility = if (on) View.VISIBLE else View.GONE
+        if (!on) store.setQuiet("grid_layout", board.serialize())
+    }
+
+    // ---------- المربعات الزجاجية ----------
+
+    private fun glassOn(): Boolean = store.str("glass", "0") == "1"
+
+    private fun applyGlass() {
+        if (!glassOn()) return
+        GlassDrawable.root = root
+        val d = resources.displayMetrics.density
+        val fill = if (appliedDay) 0x80FFFFFF.toInt() else 0x2EFFFFFF
+        val stroke = if (appliedDay) 0xB3FFFFFF.toInt() else 0x4DFFFFFF
+        val ids = intArrayOf(
+            R.id.speedCard, R.id.weatherCard, R.id.musicCard, R.id.mapsTile,
+            R.id.slot1, R.id.photoTile, R.id.volumeColumn,
+            R.id.themeToggle, R.id.wallpaperButton, R.id.brightDown, R.id.brightUp
+        )
+        for (id in ids) {
+            val view = findViewById<View>(id) ?: continue
+            val glass = GlassDrawable(view, 20 * d, fill, stroke, 1.5f * d)
+            view.background = if (view.isClickable) {
+                android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF), glass, null
+                )
+            } else glass
         }
     }
 
-    private fun applyLayoutPrefs() {
-        val left = findViewById<View>(R.id.leftColumn)
-        val center = findViewById<View>(R.id.centerColumn)
-        val weather = findViewById<View>(R.id.weatherCard)
-        val musicCard = findViewById<View>(R.id.musicCard)
-        val photo = findViewById<View>(R.id.photoTile)
-        val maps = findViewById<View>(R.id.mapsTile)
-        val slot = findViewById<View>(R.id.slot1)
-
-        findViewById<View>(R.id.speedCard).visibility =
-            if (store.str("show_speed", "1") == "1") View.VISIBLE else View.INVISIBLE
-        photo.visibility = if (store.str("show_photo", "1") == "1") View.VISIBLE else View.GONE
-        volumeColumn.visibility = if (store.str("show_volume", "1") == "1") View.VISIBLE else View.GONE
-
-        val mirror = store.str("mirror", "0") == "1"
-        reorder(
-            findViewById(R.id.mainRow),
-            if (mirror) listOf(volumeColumn, center, left) else listOf(left, center, volumeColumn), 16
-        )
-        reorder(
-            findViewById(R.id.topRow),
-            if (store.str("swap_top", "0") == "1") listOf(musicCard, weather) else listOf(weather, musicCard), 16
-        )
-        reorder(
-            findViewById(R.id.appsRow),
-            if (store.str("swap_apps", "0") == "1") listOf(photo, maps, slot) else listOf(maps, slot, photo), 12
-        )
-        findViewById<GridView>(R.id.drawerGrid).numColumns =
-            store.str("drawer_cols", "6").toIntOrNull() ?: 6
-    }
-
-    /** طلب من صفحة الإعدادات: اختيار خلفية أو إزالتها. */
+    /** طلب من صفحة الإعدادات: اختيار خلفية أو إزالتها، أو تعديل أماكن المربعات. */
     private fun handlePendingWallpaper() {
+        if (store.str("pending_edit", "") == "1") {
+            store.setQuiet("pending_edit", "")
+            if (store.rev() == appliedRev) setEditMode(true) else store.setQuiet("pending_edit_after", "1")
+        }
         val pending = store.str("pending_wallpaper", "")
         if (pending.isEmpty()) return
         store.setQuiet("pending_wallpaper", "")
@@ -367,6 +415,7 @@ class HomeActivity : Activity() {
     private fun loadWallpaper() {
         val file = wallpaperFile()
         if (!file.exists()) {
+            GlassDrawable.blurred = null
             wallpaperView.setImageDrawable(null)
             wallpaperView.visibility = View.GONE
             wallpaperScrim.visibility = View.GONE
@@ -383,6 +432,23 @@ class HomeActivity : Activity() {
                     wallpaperView.setImageBitmap(bitmap)
                     wallpaperView.visibility = View.VISIBLE
                     wallpaperScrim.visibility = View.VISIBLE
+                    if (glassOn()) {
+                        // مع الزجاج نخلي الصورة أوضح، والمربعات تغبّش اللي خلفها
+                        wallpaperScrim.alpha = 0.25f
+                        Thread {
+                            val soft = try {
+                                GlassDrawable.blur(bitmap)
+                            } catch (e: Throwable) {
+                                null
+                            }
+                            handler.post {
+                                GlassDrawable.blurred = soft
+                                board.invalidate()
+                                for (i in 0 until board.childCount) board.getChildAt(i).invalidate()
+                                findViewById<View>(R.id.themeToggle).rootView.invalidate()
+                            }
+                        }.start()
+                    }
                 }
             }
         }.start()
@@ -485,14 +551,14 @@ class HomeActivity : Activity() {
     }
 
     /** الساعة بنظام 12 ساعة، وجنبها ص أو م بخط أصغر. */
-    private fun clockWithPeriod(): CharSequence {
+    private fun clockWithPeriod(periodScale: Float = 0.42f): CharSequence {
         if (store.str("clock24", "0") == "1") return TimeSource.format("HH:mm")
         val text = TimeSource.format("h:mm a")
         val space = text.indexOf(' ')
         if (space < 0) return text
         val span = android.text.SpannableString(text)
         span.setSpan(
-            android.text.style.RelativeSizeSpan(0.42f), space, text.length,
+            android.text.style.RelativeSizeSpan(periodScale), space, text.length,
             android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         return span
@@ -548,7 +614,7 @@ class HomeActivity : Activity() {
             prayerNameViews[i].setTextColor(if (highlight) accent else dim)
         }
 
-        idleClock.text = time
+        idleClock.text = clockWithPeriod(0.6f)
         idlePrayer.text = nextPrayerLabel
         idleNowPlaying.text = music.nowPlaying
     }
@@ -914,6 +980,10 @@ class HomeActivity : Activity() {
             recreate()
             return
         }
+        if (store.str("pending_edit_after", "") == "1") {
+            store.setQuiet("pending_edit_after", "")
+            setEditMode(true)
+        }
         music.start()
         refreshVolume()
         val volumeFilter = IntentFilter(VOLUME_CHANGED)
@@ -950,6 +1020,10 @@ class HomeActivity : Activity() {
     /** زر الرجوع ما يطلع من اللانشر. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (board.editMode) {
+            setEditMode(false)
+            return
+        }
         if (isDrawerOpen()) closeDrawer(animate = true)
     }
 
@@ -1072,7 +1146,7 @@ class HomeActivity : Activity() {
                 volumeColumn.getLocationOnScreen(location)
                 val onVolume = volumeColumn.visibility == View.VISIBLE &&
                     ev.rawX >= location[0] && ev.rawX <= location[0] + volumeColumn.width
-                swipeArmed = !wasIdle && !isDrawerOpen() && !onVolume &&
+                swipeArmed = !wasIdle && !isDrawerOpen() && !onVolume && !board.editMode &&
                     ev.y > root.height * 0.72f
             }
             MotionEvent.ACTION_MOVE -> {

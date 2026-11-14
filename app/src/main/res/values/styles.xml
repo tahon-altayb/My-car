@@ -17,6 +17,7 @@
         <item name="lAccent">#38BDF8</item>
         <item name="lOnAccent">#0B1220</item>
         <item name="lStroke">#334155</item>
+        <item name="lIcon">?attr/lText</item>
     </style>
 
     <!-- الوضع النهاري: خلفية فاتحة ونص غامق عشان يبان في الشمس -->
@@ -33,25 +34,48 @@
         <item name="lAccent">#0369A1</item>
         <item name="lOnAccent">#FFFFFF</item>
         <item name="lStroke">#94A3B8</item>
+        <item name="lIcon">?attr/lText</item>
     </style>
 
     <!-- ألوان يختارها المستخدم: تنطبق فوق الثيم الأساسي، والنص يبقى متناسق مع الوضع -->
     <style name="AccentNight_blue"><item name="lAccent">#38BDF8</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#38BDF8</item></style>
     <style name="AccentDay_blue"><item name="lAccent">#0369A1</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#0369A1</item></style>
+    <style name="AccentNight_sky"><item name="lAccent">#7DD3FC</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#7DD3FC</item></style>
+    <style name="AccentDay_sky"><item name="lAccent">#0284C7</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#0284C7</item></style>
+    <style name="AccentNight_teal"><item name="lAccent">#2DD4BF</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#2DD4BF</item></style>
+    <style name="AccentDay_teal"><item name="lAccent">#0F766E</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#0F766E</item></style>
     <style name="AccentNight_green"><item name="lAccent">#4ADE80</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#4ADE80</item></style>
     <style name="AccentDay_green"><item name="lAccent">#15803D</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#15803D</item></style>
+    <style name="AccentNight_lime"><item name="lAccent">#A3E635</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#A3E635</item></style>
+    <style name="AccentDay_lime"><item name="lAccent">#4D7C0F</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#4D7C0F</item></style>
+    <style name="AccentNight_gold"><item name="lAccent">#FACC15</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#FACC15</item></style>
+    <style name="AccentDay_gold"><item name="lAccent">#A16207</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#A16207</item></style>
     <style name="AccentNight_orange"><item name="lAccent">#FB923C</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#FB923C</item></style>
     <style name="AccentDay_orange"><item name="lAccent">#C2410C</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#C2410C</item></style>
+    <style name="AccentNight_white"><item name="lAccent">#FFFFFF</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#FFFFFF</item></style>
+    <style name="AccentDay_white"><item name="lAccent">#111827</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#111827</item></style>
+    <style name="AccentNight_silver"><item name="lAccent">#CBD5E1</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#CBD5E1</item></style>
+    <style name="AccentDay_silver"><item name="lAccent">#475569</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#475569</item></style>
     <style name="AccentNight_purple"><item name="lAccent">#C4B5FD</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#C4B5FD</item></style>
     <style name="AccentDay_purple"><item name="lAccent">#6D28D9</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#6D28D9</item></style>
     <style name="AccentNight_pink"><item name="lAccent">#F9A8D4</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#F9A8D4</item></style>
     <style name="AccentDay_pink"><item name="lAccent">#BE185D</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#BE185D</item></style>
-    <style name="AccentNight_gold"><item name="lAccent">#FACC15</item><item name="lOnAccent">#0B1220</item><item name="android:colorAccent">#FACC15</item></style>
-    <style name="AccentDay_gold"><item name="lAccent">#A16207</item><item name="lOnAccent">#FFFFFF</item><item name="android:colorAccent">#A16207</item></style>
     <style name="BgNight_navy"><item name="lBg">#0B1220</item><item name="lCard">#111B2E</item><item name="lCardAlt">#24324F</item><item name="lStroke">#334155</item></style>
     <style name="BgNight_black"><item name="lBg">#000000</item><item name="lCard">#121212</item><item name="lCardAlt">#2A2A2A</item><item name="lStroke">#3F3F3F</item></style>
     <style name="BgNight_charcoal"><item name="lBg">#1C1F26</item><item name="lCard">#272B34</item><item name="lCardAlt">#3A404D</item><item name="lStroke">#4A5160</item></style>
+    <style name="BgNight_ocean"><item name="lBg">#071A2B</item><item name="lCard">#0E2A42</item><item name="lCardAlt">#1D4363</item><item name="lStroke">#2B5A80</item></style>
+    <style name="BgNight_forest"><item name="lBg">#07170F</item><item name="lCard">#10261B</item><item name="lCardAlt">#1F3D2E</item><item name="lStroke">#2F5643</item></style>
     <style name="BgDay_ice"><item name="lBg">#F1F5F9</item><item name="lCard">#FFFFFF</item><item name="lCardAlt">#CBD5E1</item><item name="lStroke">#94A3B8</item></style>
     <style name="BgDay_cream"><item name="lBg">#F5EFE4</item><item name="lCard">#FFFBF3</item><item name="lCardAlt">#DDD2BD</item><item name="lStroke">#A89B82</item></style>
     <style name="BgDay_gray"><item name="lBg">#E5E7EB</item><item name="lCard">#F9FAFB</item><item name="lCardAlt">#C4C8D0</item><item name="lStroke">#8B93A1</item></style>
+    <style name="BgDay_skyl"><item name="lBg">#E0F2FE</item><item name="lCard">#F5FBFF</item><item name="lCardAlt">#BAE6FD</item><item name="lStroke">#7DB9DD</item></style>
+    <style name="BgDay_mint"><item name="lBg">#E7F8EF</item><item name="lCard">#F7FEFA</item><item name="lCardAlt">#BBEBD0</item><item name="lStroke">#7FC8A0</item></style>
+    <style name="TextNight_white"><item name="lText">#FFFFFF</item><item name="lTextDim">#B4BFCE</item></style>
+    <style name="TextNight_soft"><item name="lText">#CBD5E1</item><item name="lTextDim">#8A96A8</item></style>
+    <style name="TextNight_accent"><item name="lText">?attr/lAccent</item><item name="lTextDim">#A9B4C4</item></style>
+    <style name="TextDay_white"><item name="lText">#0B1220</item><item name="lTextDim">#334155</item></style>
+    <style name="TextDay_soft"><item name="lText">#334155</item><item name="lTextDim">#5B6678</item></style>
+    <style name="TextDay_accent"><item name="lText">?attr/lAccent</item><item name="lTextDim">#475569</item></style>
+    <style name="Icon_text"><item name="lIcon">?attr/lText</item></style>
+    <style name="Icon_accent"><item name="lIcon">?attr/lAccent</item></style>
 </resources>
