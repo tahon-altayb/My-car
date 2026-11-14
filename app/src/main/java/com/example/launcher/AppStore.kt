@@ -69,11 +69,26 @@ class AppStore(context: Context) {
         prefs.edit().putInt("brightness", level).apply()
     }
 
-    fun lat(): Double = prefs.getFloat("lat", DEFAULT_LAT).toDouble()
-    fun lng(): Double = prefs.getFloat("lng", DEFAULT_LNG).toDouble()
+    /** المدينة المختارة يدوياً، أو null لو الإعداد "تلقائي من GPS". */
+    fun city(): Cities.City? = Cities.byKey(str("city", "auto"))
+
+    /** فيه موقع حقيقي محفوظ من الـGPS؟ */
+    fun hasFix(): Boolean = prefs.getBoolean("has_fix", false)
+
+    fun lat(): Double = city()?.lat ?: prefs.getFloat("lat", DEFAULT_LAT).toDouble()
+    fun lng(): Double = city()?.lng ?: prefs.getFloat("lng", DEFAULT_LNG).toDouble()
+
+    /** اسم المكان اللي محسوبة عليه المواقيت. */
+    fun placeName(): String {
+        val chosen = city()
+        if (chosen != null) return chosen.name
+        if (!hasFix()) return "الرياض (بانتظار GPS)"
+        return Cities.nearest(lat(), lng())?.name ?: "موقعك الحالي"
+    }
 
     fun setLocation(lat: Double, lng: Double) {
-        prefs.edit().putFloat("lat", lat.toFloat()).putFloat("lng", lng.toFloat()).apply()
+        prefs.edit().putFloat("lat", lat.toFloat()).putFloat("lng", lng.toFloat())
+            .putBoolean("has_fix", true).apply()
     }
 
     fun clockOffset(): Long = prefs.getLong("clock_offset", 0L)

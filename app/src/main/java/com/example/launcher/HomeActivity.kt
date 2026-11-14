@@ -137,7 +137,8 @@ class HomeActivity : Activity() {
                 speedText.text = String.format(Locale.US, "%d", kmh)
             }
             syncClock(location.time)
-            val moved = Math.abs(location.latitude - store.lat()) > 0.05 ||
+            val moved = !store.hasFix() ||
+                Math.abs(location.latitude - store.lat()) > 0.05 ||
                 Math.abs(location.longitude - store.lng()) > 0.05
             if (moved) {
                 store.setLocation(location.latitude, location.longitude)
@@ -369,7 +370,7 @@ class HomeActivity : Activity() {
 
     /** لو بلوتوث الراديو طافي (بعد تشغيل السيارة مثلاً) نشغّله، إذا الإعداد مفعل. */
     private fun ensureBluetoothOn() {
-        if (store.str("bt_keep_on", "1") != "1") return
+        if (store.str("bt_keep_on", "0") != "1") return
         try {
             val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter() ?: return
             if (adapter.state == android.bluetooth.BluetoothAdapter.STATE_OFF) {
@@ -530,7 +531,8 @@ class HomeActivity : Activity() {
     /** يحوّل 14.75 إلى "٢:٤٥" بنظام 12 ساعة. */
     private fun formatHours(value: Double): String {
         var hour = Math.floor(value).toInt()
-        var minute = Math.round((value - hour) * 60.0).toInt()
+        // مثل تقويم أم القرى: الكسور ترتفع للدقيقة اللي بعدها
+        var minute = Math.ceil((value - hour) * 60.0 - 0.05).toInt()
         if (minute == 60) {
             hour += 1
             minute = 0
@@ -691,13 +693,13 @@ class HomeActivity : Activity() {
     private fun showWeather() {
         if (store.weatherTime() == 0L) {
             weatherTemp.text = ""
-            weatherDesc.text = "الطقس يحتاج اتصال بالإنترنت"
+            weatherDesc.text = store.placeName() + "\nالطقس يحتاج إنترنت"
             return
         }
         val info = store.weather()
         weatherTemp.text = String.format(Locale.US, "%d°", Math.round(info.temp))
         weatherDesc.text = String.format(
-            Locale.US, "%s\nرياح %d كم/س", Weather.describe(info.code), Math.round(info.wind)
+            Locale.US, "%s · %s\nرياح %d كم/س", store.placeName(), Weather.describe(info.code), Math.round(info.wind)
         )
     }
 
@@ -1080,6 +1082,20 @@ class HomeActivity : Activity() {
             val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, locationListener)
             startNmea(lm)
+            // آخر موقع يعرفه الراديو: يكفي للمواقيت قبل ما يلقط الأقمار
+            if (!store.hasFix()) {
+                val last = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    ?: try {
+                        lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    } catch (_: Exception) {
+                        null
+                    }
+                if (last != null) {
+                    store.setLocation(last.latitude, last.longitude)
+                    refreshTimeViews()
+                    showWeather()
+                }
+            }
         } catch (_: Exception) {
             // ما فيه GPS أو الصلاحية مرفوضة
         }

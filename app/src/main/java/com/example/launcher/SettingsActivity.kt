@@ -102,12 +102,17 @@ class SettingsActivity : Activity() {
 
         header("الصلاة")
         choice(
+            "المدينة للمواقيت", "city",
+            listOf("auto") + Cities.ALL.map { it.key },
+            listOf("تلقائي من GPS") + Cities.ALL.map { it.name }, "auto"
+        )
+        choice(
             "تنبيه قبل الصلاة", "prayer_alert", listOf("10", "15", "5", "0"),
             listOf("قبل 10 دقائق", "قبل 15 دقيقة", "قبل 5 دقائق", "بدون تنبيه"), "10"
         )
 
         header("البلوتوث")
-        choice("تشغيل بلوتوث الراديو تلقائياً لو كان طافي", "bt_keep_on", listOf("1", "0"), listOf("شغال", "مطفي"), "1")
+        choice("تشغيل بلوتوث الراديو تلقائياً لو كان طافي", "bt_keep_on", listOf("0", "1"), listOf("مطفي", "شغال"), "0")
 
         header("أدوات")
         action("صفحة التشخيص", "فتح") { startActivity(Intent(this, DiagActivity::class.java)) }
