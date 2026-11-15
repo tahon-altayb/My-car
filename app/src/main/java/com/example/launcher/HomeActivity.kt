@@ -758,10 +758,20 @@ class HomeActivity : Activity() {
     }
 
     /** ساعة الراديو قد تكون غلط، فنصححها من وقت الـGPS. */
-    private fun syncClock(gpsTime: Long) {
+    private fun syncClock(rawTime: Long) {
+        // قطعة الـGPS في هذا الراديو فيها خلل "دوران الأسابيع": ترجع تاريخ ناقص 1024 أسبوع
+        // بالضبط (اليوم = أبريل 2007). نرجّع الأسابيع الناقصة ونطلع الوقت الصحيح.
+        val rollover = 1024L * 7 * 24 * 3600 * 1000
         val check = Calendar.getInstance(TimeSource.zone)
+        var gpsTime = rawTime
         check.timeInMillis = gpsTime
-        if (check.get(Calendar.YEAR) < 2025) return   // وقت GPS غير موثوق
+        var guard = 0
+        while (check.get(Calendar.YEAR) < 2019 && guard < 3) {
+            gpsTime += rollover
+            check.timeInMillis = gpsTime
+            guard++
+        }
+        if (check.get(Calendar.YEAR) !in 2025..2045) return   // وقت غير منطقي
         var offset = gpsTime - System.currentTimeMillis()
         if (Math.abs(offset) < 60_000L) offset = 0L
         if (Math.abs(offset - TimeSource.offsetMs) > 30_000L) {

@@ -50,11 +50,22 @@ object TimeSource {
     fun valid(): Boolean {
         val year = calendar().get(Calendar.YEAR)
         if (year in 2025..2045) return true
-        if (offsetMs != 0L) {
-            // تصحيح قديم ما عاد يناسب ساعة الراديو الحالية
-            offsetMs = 0L
-            return calendar().get(Calendar.YEAR) in 2025..2045
+        // ساعة الراديو قفزت بعد آخر تصحيح (مثلاً رجعت 2007): نصحح الدوران من ساعته نفسها
+        val rollover = 1024L * 7 * 24 * 3600 * 1000
+        val raw = Calendar.getInstance(zone)
+        raw.timeInMillis = System.currentTimeMillis()
+        var fixed = System.currentTimeMillis()
+        var guard = 0
+        while (raw.get(Calendar.YEAR) < 2019 && guard < 3) {
+            fixed += rollover
+            raw.timeInMillis = fixed
+            guard++
         }
+        if (guard > 0 && raw.get(Calendar.YEAR) in 2025..2045) {
+            offsetMs = fixed - System.currentTimeMillis()
+            return true
+        }
+        offsetMs = 0L
         return false
     }
 }
