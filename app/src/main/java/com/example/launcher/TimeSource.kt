@@ -47,25 +47,46 @@ object TimeSource {
     /**
      * الوقت موثوق؟ لو الراديو رجع لتاريخ المصنع (2007) وما وصل وقت GPS بعد، لا.
      */
-    fun valid(): Boolean {
-        val year = calendar().get(Calendar.YEAR)
-        if (year in 2025..2045) return true
-        // ساعة الراديو قفزت بعد آخر تصحيح (مثلاً رجعت 2007): نصحح الدوران من ساعته نفسها
-        val rollover = 1024L * 7 * 24 * 3600 * 1000
-        val raw = Calendar.getInstance(zone)
-        raw.timeInMillis = System.currentTimeMillis()
-        var fixed = System.currentTimeMillis()
-        var guard = 0
-        while (raw.get(Calendar.YEAR) < 2019 && guard < 3) {
-            fixed += rollover
-            raw.timeInMillis = fixed
-            guard++
+    /** يستدعى لما يتغير التصحيح، عشان ينحفظ ويبقى نفسه بعد إعادة التشغيل. */
+    var onOffsetChanged: ((Long) -> Unit)? = null
+
+    private fun setOffset(value: Long) {
+        if (value != offsetMs) {
+            offsetMs = value
+            onOffsetChanged?.invoke(value)
         }
-        if (guard > 0 && raw.get(Calendar.YEAR) in 2025..2045) {
-            offsetMs = fixed - System.currentTimeMillis()
+    }
+
+    private fun yearOf(millis: Long): Int {
+        val c = Calendar.getInstance(zone)
+        c.timeInMillis = millis
+        return c.get(Calendar.YEAR)
+    }
+
+    /**
+     * الوقت موثوق؟ ويصلّح التصحيح لو صار قديم.
+     * ما يرجع نتيجتين مختلفتين ورا بعض لنفس الساعة (كان هذا سبب وميض الشاشة).
+     */
+    fun valid(): Boolean {
+        val system = System.currentTimeMillis()
+        if (yearOf(system + offsetMs) in 2025..2045) return true
+        // ساعة الراديو نفسها صحيحة والتصحيح المحفوظ قديم: نلغيه
+        if (yearOf(system) in 2025..2045) {
+            setOffset(0L)
             return true
         }
-        offsetMs = 0L
+        // ساعة الراديو رجعت 1024 أسبوع (خلل الـGPS، مثلاً أبريل 2007): نرجّع الأسابيع
+        val rollover = 1024L * 7 * 24 * 3600 * 1000
+        var fixed = system
+        var guard = 0
+        while (yearOf(fixed) < 2019 && guard < 3) {
+            fixed += rollover
+            guard++
+        }
+        if (yearOf(fixed) in 2025..2045) {
+            setOffset(fixed - system)
+            return true
+        }
         return false
     }
 }

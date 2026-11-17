@@ -97,6 +97,7 @@ class HomeActivity : Activity() {
     private var appliedDay = false
     private var appliedRev = 0
     private var lastFixAt = 0L
+    private var lastLocation: Location? = null
     private lateinit var speedUnit: TextView
     private var nextPrayerLabel = ""
     private var weatherLoading = false
@@ -115,15 +116,62 @@ class HomeActivity : Activity() {
 
     private val tick = object : Runnable {
         override fun run() {
-            refreshTimeViews()
-            refreshSpeedStatus()
-            maybeRefreshWeather()
-            // الوضع التلقائي: يتبدل عند الشروق والمغرب
-            if (store.themeMode() == AppStore.MODE_AUTO && isDayNow() != appliedDay) {
-                recreate()
-                return
+            try {
+                refreshTimeViews()
+                refreshSpeedStatus()
+                maybeRefreshWeather()
+                // الوضع التلقائي: يتبدل عند الشروق والمغرب، ومرة وحدة كل 10 دقائق كحد أقصى
+                if (store.themeMode() == AppStore.MODE_AUTO && TimeSource.valid() &&
+                    isDayNow() != appliedDay && canAutoSwitch()
+                ) {
+                    recreate()
+                    return
+                }
+            } catch (e: Throwable) {
+                logCrash("tick", e)
             }
             handler.postDelayed(this, TICK_MS)
+        }
+    }
+
+    private fun canAutoSwitch(): Boolean {
+        val prefs = getSharedPreferences("launcher_guard", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong("auto_switch_at", 0L)
+        if (Math.abs(now - last) < 10 * 60_000L) return false
+        prefs.edit().putLong("auto_switch_at", now).apply()
+        return true
+    }
+
+    // ---------- سجل الأعطال ----------
+
+    private fun crashFile(): java.io.File = java.io.File(filesDir, "crash.txt")
+
+    private fun logCrash(where: String, e: Throwable) {
+        try {
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val old = if (crashFile().exists()) crashFile().readText() else ""
+            val entry = java.util.Date().toString() + " [" + where + "]\n" + sw.toString().take(2500) + "\n\n"
+            crashFile().writeText((entry + old).take(12000))
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** أي توقف مفاجئ ينكتب في ملف، ويظهر في صفحة التشخيص. */
+    private fun installCrashLog() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        if (previous is CrashCatcher) return
+        Thread.setDefaultUncaughtExceptionHandler(CrashCatcher(previous) { logCrash("crash", it) })
+    }
+
+    private class CrashCatcher(
+        val previous: Thread.UncaughtExceptionHandler?,
+        val log: (Throwable) -> Unit
+    ) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(t: Thread, e: Throwable) {
+            log(e)
+            previous?.uncaughtException(t, e)
         }
     }
 
@@ -135,8 +183,21 @@ class HomeActivity : Activity() {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            lastFixAt = SystemClock.elapsedRealtime()
-            val kmh = if (location.hasSpeed()) Math.round(location.speed * 3.6f) else 0
+            val nowFix = SystemClock.elapsedRealtime()
+            var kmh = 0
+            if (location.hasSpeed()) {
+                kmh = Math.round(location.speed * 3.6f)
+            } else {
+                // القطعة ما ترسل سرعة: نحسبها من المسافة بين آخر نقطتين
+                val prev = lastLocation
+                if (prev != null && nowFix > lastFixAt && nowFix - lastFixAt < 5000L) {
+                    val meters = prev.distanceTo(location)
+                    kmh = Math.round(meters / ((nowFix - lastFixAt) / 1000f) * 3.6f)
+                    if (kmh < 3 || kmh > 250) kmh = 0
+                }
+            }
+            lastLocation = location
+            lastFixAt = nowFix
             speedText.text = String.format(Locale.US, "%d", kmh)
             speedUnit.text = "كم/س"
             syncClock(location.time)
@@ -161,7 +222,10 @@ class HomeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         store = AppStore(this)
+        installCrashLog()
         TimeSource.offsetMs = store.clockOffset()
+        TimeSource.onOffsetChanged = { store.setClockOffset(it) }
+        TimeSource.valid()
         appliedDay = isDayNow()
         store.setLastDay(appliedDay)
         appliedRev = store.rev()
@@ -239,7 +303,7 @@ class HomeActivity : Activity() {
             AppStore.MODE_DAY -> true
             AppStore.MODE_NIGHT -> false
             else -> {
-                if (!TimeSource.valid()) return appliedDay
+                if (!TimeSource.valid()) return store.lastDay()
                 val times = prayerTimes()
                 val now = nowHours()
                 now >= times[1] && now < times[4]   // من الشروق إلى المغرب
@@ -392,7 +456,7 @@ class HomeActivity : Activity() {
 
     /** يوضح ليش السرعة ما تظهر، بدل ما يبقى المربع فاضي. */
     private fun refreshSpeedStatus() {
-        if (SystemClock.elapsedRealtime() - lastFixAt < 5000L && lastFixAt != 0L) return
+        if (lastFixAt != 0L && SystemClock.elapsedRealtime() - lastFixAt < 10_000L) return
         val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         speedText.text = "--"
         speedUnit.text = when {

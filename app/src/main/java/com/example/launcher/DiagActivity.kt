@@ -242,7 +242,13 @@ class DiagActivity : Activity() {
     private fun probe() {
         output.text = "..."
         Thread {
-            val sb = StringBuilder("== BT STATE ==\n")
+            val sb = StringBuilder("== CRASHES ==\n")
+            try {
+                val f = File(filesDir, "crash.txt")
+                sb.append(if (f.exists()) f.readText().take(4000) else "none").append('\n')
+            } catch (_: Throwable) {
+            }
+            sb.append("== BT STATE ==\n")
             try {
                 val ad = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
                 sb.append("adapter state=").append(ad?.state).append(" (10=off 11=turning on 12=on 13=turning off)\n")
